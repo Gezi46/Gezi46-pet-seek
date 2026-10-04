@@ -813,6 +813,12 @@ func _ready() -> void:
 			_has.size(), _idle_anim, _ground_offset, _camera.size])
 
 func _process(delta: float) -> void:
+	# _ready 还没跑完、或者中途出错停住时，这些模块还是 null —— 跳过这一帧就是。
+	# ⚠️ 这道守卫**必须留**：窗口一显示就可能收到鼠标事件，_input 里 pointer 为 null
+	# 会抛错并**打断 _ready**，于是那些模块再也没机会建起来，然后每帧接着抛
+	# —— 表现是"启动即崩 + 满屏 Nil 报错"（2026-10-04 实测踩到）
+	if pointer == null or rig == null or walk == null or instance == null:
+		return
 	instance.tick(delta)      # 心跳：告诉下一个想启动的实例"我还活着"（见 pet_instance.gd）
 	pointer._update_hover()
 	rig._update_idle_face()
@@ -981,6 +987,11 @@ func _nearby_bounds() -> Rect2i:
 #   - _begin_drag / _end_drag 是探针（probe_drag_state）打的接口。
 
 func _input(event: InputEvent) -> void:
+	# _ready 完成之前窗口就可能收到鼠标事件（窗口一显示就算），那会儿 pointer 还是 null。
+	# ⚠️ 漏了这道守卫：这里抛错会**打断 _ready**，模块再也建不起来，然后每帧跟着抛
+	# —— "启动即崩 + 满屏 Nil 报错"（2026-10-04 实测）
+	if pointer == null:
+		return
 	# GPU 自动透视中：鼠标事件一律不给 pointer（穿透其实已经让窗口收不到了，
 	# 这是双保险 —— 万一 flag 被别的模式顶掉，也不能让她被误触）
 	if _gpu_passthrough:
@@ -988,6 +999,8 @@ func _input(event: InputEvent) -> void:
 	pointer._input(event)
 
 func _update_passthrough_region() -> void:
+	if pointer == null:
+		return      # _ready 未完成（见 _process / _input 那两道守卫）
 	pointer._update_passthrough_region()
 
 func _begin_drag() -> void:
@@ -1071,6 +1084,7 @@ func _on_menu_id(id: int) -> void:
 			_dock_to_home()
 			_say("回到右下角啦～")
 		PetMenu.ID_QUIT: _quit()
+		PetMenu.ID_RENAME: _open_rename()
 		PetMenu.ID_SETTINGS: _open_settings()
 		PetMenu.ID_WORKBENCH: _open_workbench()
 		PetMenu.ID_CHAT: _open_chat()
@@ -1113,6 +1127,7 @@ func _build_menu() -> void:
 	_menu_mod.setup(get_node_or_null("UI") as CanvasLayer, _menu, _cjk_font)
 	_menu_mod.action.connect(_on_menu_id)
 	_menu_mod.ai_saved.connect(_on_ai_settings_saved)
+	_menu_mod.name_saved.connect(_on_name_saved)
 	_menu_mod.ai_panel_closed.connect(_on_ai_panel_closed)
 	_menu_mod.set_ai_settings({
 		"url": chat_url, "key": chat_access_key, "model": chat_model,
@@ -1145,6 +1160,25 @@ func _build_settings() -> void:
 	_settings_mod.saved.connect(_on_settings_saved)
 	_settings_mod.closed.connect(_on_settings_closed)
 	_settings_mod.command.connect(_on_settings_command)
+
+## 菜单 →「给她起个名字…」。就一格输入，改完立刻生效。
+##
+## 名字的**真源**是 chat_persona_name（检查器变量）—— 设置面板里那一项改的也是它。
+## 两条路都汇到 _apply_settings，所以这儿不另开一套存储，免得两处打架。
+func _open_rename() -> void:
+	if _menu_mod == null:
+		return
+	_close_panels()          # 面板共用一块地方，先收掉另外几个
+	_menu_mod.open_name_panel(chat_persona_name)
+	# 面板里要敲字，得先把 NO_FOCUS 摘掉（和设置面板 / 聊天框一个道理）
+	_set_chat_focus(true)
+
+## 改名面板点了「就叫这个」（或回车）。空串 = 回到默认名（pet_persona 会兜底）
+func _on_name_saved(new_name: String) -> void:
+	_set_chat_focus(false)
+	# 复用设置那条路：落变量 + 运行时 → 落盘 → 她说一句。
+	# 人设提示词是每句现拼的，所以下一句话她就是新名字了，不用额外通知谁
+	_on_settings_saved({"persona_name": new_name})
 
 ## 菜单 →「设置…」。面板的值由主脚本给：它才是"当前值"的出处
 func _open_settings() -> void:
@@ -2052,6 +2086,7 @@ func _reconnect_ai() -> void:
 func _ui_panel_open() -> bool:
 	return _chat_open \
 		or (_menu_mod != null and _menu_mod.ai_panel_visible()) \
+		or (_menu_mod != null and _menu_mod.name_panel_visible()) \
 		or (_settings_mod != null and _settings_mod.is_open()) \
 		or (_workbench != null and _workbench.is_open())
 
@@ -2060,6 +2095,7 @@ func _close_panels() -> void:
 	_close_chat()
 	if _menu_mod != null:
 		_menu_mod.close_ai_panel()
+		_menu_mod.close_name_panel()
 	if _settings_mod != null:
 		_settings_mod.close()
 	if _workbench != null:
@@ -2071,6 +2107,8 @@ func _point_in_any_panel(pos: Vector2) -> bool:
 			and _chat_panel.get_global_rect().has_point(pos):
 		return true
 	if _menu_mod != null and _menu_mod.point_in_ai_panel(pos):
+		return true
+	if _menu_mod != null and _menu_mod.point_in_name_panel(pos):
 		return true
 	if _settings_mod != null and _settings_mod.point_inside(pos):
 		return true

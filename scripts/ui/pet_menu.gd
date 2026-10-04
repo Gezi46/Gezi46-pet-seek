@@ -26,6 +26,8 @@ signal action(id: int)
 signal ai_saved(settings: Dictionary)
 ## AI 设置面板关掉了（主脚本要把键盘焦点还回去）
 signal ai_panel_closed()
+## 改名面板点了保存。宿主接过去写进人设并落盘（2026-10-04 用户要求"菜单里能随意命名"）
+signal name_saved(new_name: String)
 
 ## 面板零件的出处（卡片 / 标签 / 输入框都从这儿来，和设置面板共用一套长相）
 const PetUi := preload("res://scripts/ui/pet_ui.gd")
@@ -97,6 +99,10 @@ const ID_MOVE_NEVER := 42
 const ID_MOVE_RARE := 43
 const ID_MOVE_SOME := 44
 const ID_MOVE_OFTEN := 45
+## 「给她起个名字…」—— 根菜单一级，点开就是一个小输入框（2026-10-04 用户要求：
+## "改成可以在菜单随意命名"）。名字本来就在设置面板里有，但要翻两层再滚到那一项，
+## 改名这种"顺手就干"的事不该这么绕
+const ID_RENAME := 46
 ## 自启动状态那一行：只用来显示，点了什么也不做。
 ## 给个大编号躲开真实动作的号段 —— 万一哪天漏了拦截，也不会误触发别的功能
 const ID_AUTOSTART_STATUS := 900
@@ -139,6 +145,10 @@ var _settings: Dictionary = {
 	"url": "", "key": "", "model": "", "vision_url": "", "vision_model": "",
 }
 
+# 改名面板（「给她起个名字…」）
+var _name_panel: PanelContainer = null
+var _name_edit: LineEdit = null
+
 # ------------------------------------------------------------------ 搭建
 
 func setup(ui_layer: CanvasLayer, menu: PopupMenu, font: Font) -> void:
@@ -151,6 +161,7 @@ func setup(ui_layer: CanvasLayer, menu: PopupMenu, font: Font) -> void:
 		_menu.id_pressed.connect(_on_item)
 	_build_menu()
 	_build_ai_panel(ui_layer)
+	_build_name_panel(ui_layer)
 
 ## 菜单条目被点了：统一转成 action 信号，由主脚本决定干什么
 func _on_item(id: int) -> void:
@@ -244,6 +255,7 @@ func _build_menu() -> void:
 	# 工作台放一级：它是"给她派活、看她改了什么"的地方，主要用来让她给自己升级
 	_item(_menu, "工作台…", ID_WORKBENCH, "把活交给本机的 dsh 干：任务、工作目录、结果原文、" \
 		+ "干完一键重启她")
+	_item(_menu, "给她起个名字…", ID_RENAME, "改完立刻生效（写进人设提示词）；留空就回到默认的「小蓝」")
 	_item(_menu, "设置…", ID_SETTINGS)
 	_item(_menu, "退出", ID_QUIT)
 
@@ -427,6 +439,73 @@ func _set_checked(id: int, on: bool) -> void:
 	var idx := m.get_item_index(id)
 	if idx >= 0:
 		m.set_item_checked(idx, on)
+
+# ------------------------------------------------------------------ 改名面板
+
+## 「给她起个名字…」。和 AI 面板同一个套路（挂 CanvasLayer、共用 PetUi 那套零件），
+## 但只有一格输入 + 两个按钮 —— 用户要的是"顺手改个名"，不该逼他翻两层菜单再滚到那一项。
+##
+## 为什么不弹独立窗口：项目里 embed_subwindows=false，弹独立窗会变成另一个 OS 窗口，
+## 而桌宠平时是 no_focus 的，键盘焦点很难处理（和 AI 面板同一个理由）。
+func _build_name_panel(layer: CanvasLayer) -> void:
+	if layer == null:
+		return
+	_name_panel = PetUi.panel()
+	_name_panel.name = "RenamePet"
+	_name_panel.visible = false
+	# 居中的小卡片：就一格输入，占满整窗会显得很突兀
+	_name_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_name_panel.custom_minimum_size = Vector2(260, 0)
+	layer.add_child(_name_panel)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 5)
+	_name_panel.add_child(vb)
+
+	vb.add_child(PetUi.label("她叫什么？", _font, 12))
+	_name_edit = PetUi.edit("比如：小蓝", _font)
+	# 回车 = 按保存。敲完名字顺手回车是最自然的动作，不该逼人再去点按钮
+	_name_edit.text_submitted.connect(func(_t: String) -> void: _on_name_ok())
+	vb.add_child(_name_edit)
+	vb.add_child(PetUi.label("写进人设提示词；留空 = 回到默认的「小蓝」", _font, 11, PetUi.TEXT_SUB))
+
+	var row := PetUi.hbox(6)
+	row.alignment = BoxContainer.ALIGNMENT_END
+	var cancel := PetUi.button("算了", _font)
+	cancel.pressed.connect(close_name_panel)
+	row.add_child(cancel)
+	var save := PetUi.button("就叫这个", _font)
+	save.pressed.connect(_on_name_ok)
+	row.add_child(save)
+	vb.add_child(row)
+
+## 打开。当前名字由**宿主**给 —— 它才是"当前值"的出处（和设置面板一个道理）
+func open_name_panel(current_name: String) -> void:
+	if _name_panel == null:
+		return
+	_name_edit.text = current_name
+	_name_panel.visible = true
+	_name_edit.grab_focus()
+	_name_edit.select_all()
+
+func name_panel_visible() -> bool:
+	return _name_panel != null and _name_panel.visible
+
+func close_name_panel() -> void:
+	if _name_panel == null or not _name_panel.visible:
+		return
+	_name_panel.visible = false
+
+func point_in_name_panel(pos: Vector2) -> bool:
+	if _name_panel == null or not _name_panel.visible:
+		return false
+	return _name_panel.get_global_rect().has_point(pos)
+
+## 点了「就叫这个」（或回车）。空串照发 —— 宿主按"回到默认"处理
+func _on_name_ok() -> void:
+	var n := _name_edit.text.strip_edges()
+	close_name_panel()
+	name_saved.emit(n)
 
 # ------------------------------------------------------------------ AI 设置面板
 

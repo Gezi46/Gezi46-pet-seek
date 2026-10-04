@@ -83,7 +83,12 @@ func read_stamp() -> Array:
 		pid = int(parts[1])
 	return [int(parts[0]), pid]
 
-## 除了我，还有活的吗（心跳新鲜 = 有）
+## 除了我，还有活的吗（心跳新鲜 **且那个 pid 真的还在**）
+##
+## ⚠️ 2026-10-04 补的 pid 检查：原来只看时间戳，于是"被强杀 / 被任务管理器结束"
+## 留下的心跳会在 FRESH_SEC（9 秒）里说得像还有人在跑 —— 表现就是用户报的
+## "**怎么老出现开着的情况，我已经关闭了**"：他明明关了，新实例却起不来。
+## 那份文件里一直存着 pid，只是没人用它。现在两样都对上才算"有人"。
 func _has_live_other() -> bool:
 	var st := read_stamp()
 	var stamp := int(st[0])
@@ -91,7 +96,18 @@ func _has_live_other() -> bool:
 		return false
 	var age := float(int(Time.get_unix_time_from_system()) - stamp)
 	# 负数是时钟被往回调过，当成"不新鲜"处理：宁可放行，也别把主人锁在门外
-	return age >= 0.0 and age < FRESH_SEC
+	if age < 0.0 or age >= FRESH_SEC:
+		return false
+	return _pid_alive(int(st[1]))
+
+## 那个 pid 还活着吗。
+##   · pid <= 0（老格式的心跳文件，或读坏了）→ 只能按时间戳判，放行
+##   · 平台不支持查（OS.is_process_running 返回 false 有些平台一律如此）—— 这里
+##     **不能**因此就把人锁在门外，所以查不到时按"活着"处理，退回时间戳判断
+func _pid_alive(pid: int) -> bool:
+	if pid <= 0:
+		return true
+	return OS.is_process_running(pid)
 
 ## 给探针/日志看：正在跑的那个是谁（pid，0 = 没有）
 func alive_pid() -> int:
