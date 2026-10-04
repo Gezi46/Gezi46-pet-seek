@@ -89,7 +89,7 @@ static func measure_action_ends(pet: Node3D) -> void:
 		var end: float = clampf(last_move + ACTION_TAIL, 0.0, a.length)
 		pet._action_end[name] = end
 		if OS.is_debug_build():
-			print("[桌宠] %s：动作到 %.2fs / 全长 %.2fs（%.0f%%）" % [
+			print("[PetDeek] %s：动作到 %.2fs / 全长 %.2fs（%.0f%%）" % [
 				name, end, a.length, end / maxf(a.length, 0.001) * 100.0])
 	pet._anim.stop()
 	pet._anim.speed_scale = saved_speed

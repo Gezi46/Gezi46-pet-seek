@@ -78,7 +78,7 @@ func note_user_message(msg: String) -> void:
 		return
 	var added: Array = memory.learn(msg)
 	if not added.is_empty() and OS.is_debug_build():
-		print("[桌宠] 记住了：%s" % "；".join(added))
+		print("[PetDeek] 记住了：%s" % "；".join(added))
 
 ## 一轮对话结束后收进记忆：更新工作记忆 + 让记忆衰减一次。
 ## 视觉/主动搭话那条不记 —— 它们没有"主人说的话"，靠 _last_user_msg 区分
@@ -220,7 +220,7 @@ func task_done(text: String) -> void:
 	if _task == "facts":
 		var n: int = memory.apply_extracted_facts(PetMemory.parse_json_array(text))
 		if n > 0 and OS.is_debug_build():
-			print("[桌宠] AI 记忆抽取：存了 %d 条" % n)
+			print("[PetDeek] AI 记忆抽取：存了 %d 条" % n)
 	elif _task == "summary":
 		var d := PetMemory.parse_json_object(text)
 		var topics: Array = []
@@ -229,20 +229,20 @@ func task_done(text: String) -> void:
 		memory.apply_working_summary(String(d.get("summary", "")), topics,
 			String(d.get("current_emotion", "")))
 		if OS.is_debug_build():
-			print("[桌宠] 工作记忆已更新")
+			print("[PetDeek] 工作记忆已更新")
 	elif _task == "observe":
 		# 从她"主动搭话 / 偷看屏幕"那句话里，只挑出关于主人的事实；
 		# 模型觉得没东西可记就返回 []，那就是这一轮什么都没留下（正常）
 		var n: int = memory.apply_extracted_facts(PetMemory.parse_json_array(text))
 		if OS.is_debug_build():
-			print("[桌宠] 观察进记忆：模型挑出 %d 条" % n)
+			print("[PetDeek] 观察进记忆：模型挑出 %d 条" % n)
 	_task = ""
 
 ## 后台任务失败只打日志：聊天本身不受影响，也不该弹提示打扰主人
 func task_failed(msg: String) -> void:
 	_task = ""
 	if OS.is_debug_build():
-		print("[桌宠] 记忆后台任务失败（不影响聊天）：%s" % msg)
+		print("[PetDeek] 记忆后台任务失败（不影响聊天）：%s" % msg)
 
 ## 提示词里塞原话就行，但别把一整篇长文丢进去
 func _clip(s: String, n: int) -> String:

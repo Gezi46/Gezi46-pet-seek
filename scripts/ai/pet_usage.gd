@@ -45,5 +45,5 @@ static func line(tag: String, usage: Dictionary) -> String:
 	var m := miss(usage)
 	var total := int(usage.get("prompt_tokens", 0))
 	var rate := 0.0 if h + m <= 0 else 100.0 * float(h) / float(h + m)
-	return "[桌宠] %s token 账：命中缓存 %d / 未命中 %d（提示共 %d，命中率 %.0f%%）" % [
+	return "[PetDeek] %s token 账：命中缓存 %d / 未命中 %d（提示共 %d，命中率 %.0f%%）" % [
 		tag, h, m, total, rate]

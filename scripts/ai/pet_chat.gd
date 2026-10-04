@@ -170,7 +170,7 @@ func _step_retry() -> void:
 		_stream_error = ""
 		_sse.start(_host, _port, path, headers, body, _tls)
 	if OS.is_debug_build():
-		print("[桌宠] 重发（%s）" % kind)
+		print("[PetDeek] 重发（%s）" % kind)
 
 ## 后端不认"关思考"这个参数（回 400）→ 把它摘掉，**之后所有请求都不再带它**。
 ## 这样换到别的模型（比如 glm-5.3-flashx 不认 thinking）不会因为这一项卡死，
@@ -188,13 +188,13 @@ func _note_unsupported(code: int, body_text: String) -> void:
 	if no_think:
 		no_think = false
 		if OS.is_debug_build():
-			print("[桌宠] 这个后端不认『关思考』（400），之后不再发它：%s"
+			print("[PetDeek] 这个后端不认『关思考』（400），之后不再发它：%s"
 				% body_text.substr(0, 120))
 		return
 	if send_usage:
 		send_usage = false
 		if OS.is_debug_build():
-			print("[桌宠] 这个后端不认『流式带 usage』（400），之后不再发它：%s"
+			print("[PetDeek] 这个后端不认『流式带 usage』（400），之后不再发它：%s"
 				% body_text.substr(0, 120))
 		return
 

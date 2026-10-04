@@ -77,9 +77,9 @@ func on_overflow() -> void:
 		_host.memory.add(PetMood.NOTE_TOUCH, 0.15)
 		_host.memory.save()
 		if OS.is_debug_build():
-			print("[桌宠] 被摸烦了 → 已记进长期记忆")
+			print("[PetDeek] 被摸烦了 → 已记进长期记忆")
 	if OS.is_debug_build():
-		print("[桌宠] 摸得太频繁（一分钟内到 %d 下）→ 她主动开口（委屈度 %.1f）" % [
+		print("[PetDeek] 摸得太频繁（一分钟内到 %d 下）→ 她主动开口（委屈度 %.1f）" % [
 			PetMood.TOUCH_BURST_LIMIT, _host._mood.level()])
 	# 后端不可用 / 正忙：退本地台词，但"开始等她回话"这一步不能少 ——
 	# 和生闷气一个待遇，你还不理她就会接着闹

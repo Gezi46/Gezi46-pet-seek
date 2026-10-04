@@ -48,10 +48,10 @@ func setup_memory() -> void:
 	_host.memory = PetMemory.new()
 	_host.memory.load_from_disk()
 	if _host.memory.last_error != "" and OS.is_debug_build():
-		print("[桌宠] 记忆：%s" % _host.memory.last_error)
+		print("[PetDeek] 记忆：%s" % _host.memory.last_error)
 	if OS.is_debug_build():
 		var st: Dictionary = _host.memory.stats()
-		print("[桌宠] 记忆：%d 条（核心 %d / 重要 %d / 常规 %d），档案 %d 项" % [
+		print("[PetDeek] 记忆：%d 条（核心 %d / 重要 %d / 常规 %d），档案 %d 项" % [
 			int(st["total"]), int(st["core"]), int(st["important"]),
 			int(st["regular"]), int(st["profile"])])
 

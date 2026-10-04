@@ -106,7 +106,7 @@ func start() -> void:
 		ProjectSettings.globalize_path(GPU_FILE),
 	]), false)
 	if _pid <= 0 and OS.is_debug_build():
-		print("[桌宠] 辅助进程没能起来（create_process 返回 %d）" % _pid)
+		print("[PetDeek] 辅助进程没能起来（create_process 返回 %d）" % _pid)
 
 ## 把项目图标解出来给托盘用。
 ## 导出版里 `res://icon.png` 是 PCK 里的一段数据、不是文件路径，而托盘要真实文件，
@@ -147,7 +147,7 @@ func tick() -> void:
 		# （它的状态文件心跳要 15 秒才判定过期，太慢；这里直接看进程在不在）
 		if _pid > 0 and not OS.is_process_running(_pid):
 			if OS.is_debug_build():
-				print("[桌宠] 辅助进程没了，重拉一个")
+				print("[PetDeek] 辅助进程没了，重拉一个")
 			_pid = -1
 			_restarts = 0
 			start()
@@ -169,7 +169,7 @@ func _poll_command() -> void:
 	f.close()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(CMD_FILE))
 	if OS.is_debug_build():
-		print("[桌宠] 托盘命令：%s" % cmd)
+		print("[PetDeek] 托盘命令：%s" % cmd)
 	match cmd:
 		"toggle":
 			toggle_visible()
@@ -198,7 +198,7 @@ func toggle_visible() -> void:
 	else:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MINIMIZED)
 	if OS.is_debug_build():
-		print("[桌宠] 托盘切换显示 -> mode=%d" % DisplayServer.window_get_mode())
+		print("[PetDeek] 托盘切换显示 -> mode=%d" % DisplayServer.window_get_mode())
 
 ## 把"意愿"写下来给辅助进程读（它每 800ms 读一次并照着维持）：
 ##   第 1 个数 = 不进任务栏；第 2 个数 = 保持置顶；第 3 个数 = 菜单正开着。
@@ -273,4 +273,4 @@ func _maybe_restart(now: float) -> void:
 	_restarts += 1
 	start()
 	if OS.is_debug_build():
-		print("[桌宠] 全屏检测没动静了，重启第 %d 次" % _restarts)
+		print("[PetDeek] 全屏检测没动静了，重启第 %d 次" % _restarts)

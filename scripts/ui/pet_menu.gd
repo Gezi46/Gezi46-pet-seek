@@ -242,7 +242,7 @@ func _build_menu() -> void:
 	_menu.add_submenu_node_item("聊天与 AI", ai)
 
 	var sys := _submenu("开机与系统")
-	_toggle(sys, "开机自启动", ID_AUTOSTART, "登录 Windows 后自动启动桌宠（写用户级注册表，随时可关）")
+	_toggle(sys, "开机自启动", ID_AUTOSTART, "登录 Windows 后自动启动 PetDeek（写用户级注册表，随时可关）")
 	_toggle(sys, "隐藏任务栏图标", ID_HIDE_TASKBAR, "不在任务栏和 Alt+Tab 里出现，桌面上照常显示")
 	_toggle(sys, "全屏时保持安静", ID_QUIET_FULLSCREEN,
 		"检测到全屏（看视频/玩游戏）就只在家的附近小范围挪动；关掉则不再留后台检测进程")

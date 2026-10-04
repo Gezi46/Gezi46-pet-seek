@@ -284,7 +284,7 @@ func camera_shot() -> String:
 		else:
 			_host._camera_last_error = "没找到摄像头设备（CameraServer 枚举到 %d 个）" % n
 		if OS.is_debug_build():
-			print("[桌宠] %s" % _host._camera_last_error)
+			print("[PetDeek] %s" % _host._camera_last_error)
 		return ""
 	var feed: CameraFeed = CameraServer.get_feed(_host.camera_index)
 	if feed == null:
@@ -303,7 +303,7 @@ func camera_shot() -> String:
 	if img == null or img.is_empty():
 		_host._camera_last_error = "摄像头在，但没能取到画面（可能被别的程序占用，或者笔记本的摄像头开关/快捷键关着）"
 		if OS.is_debug_build():
-			print("[桌宠] %s" % _host._camera_last_error)
+			print("[PetDeek] %s" % _host._camera_last_error)
 		return ""
 	if img.get_width() > 1280:
 		var ratio: float = 1280.0 / float(img.get_width())

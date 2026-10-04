@@ -279,7 +279,7 @@ func show_given(kind: String, line: String, opts: Array) -> bool:
 	_gen += 1
 	_show_buttons(clean)
 	if OS.is_debug_build():
-		print("[桌宠] 快速回答（和她那句话一起给出的，没多花一次请求）：%s" % str(clean))
+		print("[PetDeek] 快速回答（和她那句话一起给出的，没多花一次请求）：%s" % str(clean))
 	return true
 
 func hide() -> void:
@@ -407,7 +407,7 @@ func _on_ai_done(text: String) -> void:
 	if opts.size() < 2:
 		return          # 洗不出两句像样的：继续用本地那组，按钮不会消失
 	if OS.is_debug_build():
-		print("[桌宠] 快速回答（模型编的）：%s" % str(opts))
+		print("[PetDeek] 快速回答（模型编的）：%s" % str(opts))
 	_retry.clear()      # 拿到了，不用再重试
 	_show_buttons(opts)
 
@@ -419,12 +419,12 @@ func _on_ai_failed(msg: String) -> void:
 		_try_ms = Time.get_ticks_msec() + 600
 		_deadline_ms = _try_ms + AI_WAIT_MS
 		if OS.is_debug_build():
-			print("[桌宠] 快速回答：模型那条没成，再试一次（%s）" % msg)
+			print("[PetDeek] 快速回答：模型那条没成，再试一次（%s）" % msg)
 		return
 	_ai_gen = -1
 	_retry.clear()
 	if OS.is_debug_build():
-		print("[桌宠] 快速回答：模型那条没成（继续用本地那组）：%s" % msg)
+		print("[PetDeek] 快速回答：模型那条没成（继续用本地那组）：%s" % msg)
 
 ## 提示词里塞原话就行，但别把一整篇长文丢进去
 func _clip(s: String, n: int) -> String:

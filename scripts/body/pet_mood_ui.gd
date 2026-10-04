@@ -157,7 +157,7 @@ func on_sulk_timeup(first: bool) -> void:
 	var missed: int = _host._shortterm.settle_ignored(
 		_host.memory if (_host.memory_enabled and _host.memory != null) else null)
 	if missed > 0 and OS.is_debug_build():
-		print("[桌宠] 短期记忆：%d 句没人接的话忘掉了（只留情绪）" % missed)
+		print("[PetDeek] 短期记忆：%d 句没人接的话忘掉了（只留情绪）" % missed)
 	# 第一次被冷落时先偷看一眼屏幕，然后让她自己看着办（后面几次就不看了，白花一次请求）
 	if first and _host._vision_ready() and _host._vision.backend_reachable() and not _host._ai_busy():
 		var shot: String = _host._peek_screen()

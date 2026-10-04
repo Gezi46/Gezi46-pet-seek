@@ -32,7 +32,7 @@ func apply_background() -> void:
 		DisplayServer.WINDOW_FLAG_TRANSPARENT, not opaque)
 	pet.get_viewport().transparent_bg = not opaque
 	if OS.is_debug_build():
-		print("[桌宠] 卡片模式=%s（窗口flag=%s / 平台可用=%s / 导出版=%s）" % [
+		print("[PetDeek] 卡片模式=%s（窗口flag=%s / 平台可用=%s / 导出版=%s）" % [
 			opaque,
 			DisplayServer.window_get_flag(DisplayServer.WINDOW_FLAG_TRANSPARENT),
 			DisplayServer.is_window_transparency_available(),
@@ -123,7 +123,7 @@ func set_home(anchor: Vector2) -> void:
 	pet.home_anchor = anchor.clamp(Vector2.ZERO, Vector2.ONE)
 	_save_home()
 	if OS.is_debug_build():
-		print("[桌宠] 新家：%s（窗口位置 %s）" % [pet.home_anchor, home_pos()])
+		print("[PetDeek] 新家：%s（窗口位置 %s）" % [pet.home_anchor, home_pos()])
 
 
 func _save_home() -> void:

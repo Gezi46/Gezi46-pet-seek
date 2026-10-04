@@ -48,7 +48,7 @@ func schedule(what: String) -> bool:
 	left -= 1
 	at_ms = Time.get_ticks_msec() + AFTER_MS
 	if OS.is_debug_build():
-		print("[桌宠] %s：模型说它忙（429），%.1f 秒后自动再试（还剩 %d 次）" % [
+		print("[PetDeek] %s：模型说它忙（429），%.1f 秒后自动再试（还剩 %d 次）" % [
 			what, AFTER_MS / 1000.0, left])
 	return true
 

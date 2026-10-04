@@ -466,9 +466,9 @@ elseif ($Mode -eq 'watch') {
   # reads a BOM-less .ps1 as ANSI, so non-ASCII here turns into mojibake - and
   # inside a string literal that is a hard parse error (the whole script dies on
   # start, which is exactly what happened the first time round). base64 + decode.
-  $lblTip  = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5qGM5a6g77yI5Y+z6ZSu55yL6I+c5Y2V77yJ'))
+  $lblTip  = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('UGV0RGVla++8iOWPs+mUrueci+iPnOWNle+8iQ=='))
   $lblShow = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('5pi+56S6IC8g6ZqQ6JeP'))
-  $lblQuit = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('6YCA5Ye65qGM5a6g'))
+  $lblQuit = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('6YCA5Ye6IFBldERlZWs='))
   $ni.Text = $lblTip
   $menu = New-Object Windows.Forms.ContextMenuStrip
   $miShow = $menu.Items.Add($lblShow)
