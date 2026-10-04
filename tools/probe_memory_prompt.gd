@@ -38,7 +38,7 @@ func run() -> void:
 	var q_ask: Array = quick_script.quick_options_for("proactive", "你在忙什么呀？")
 	var q_talk: Array = quick_script.quick_options_for("proactive", "我刚在屏幕边上溜达了一圈。")
 	var q_sulk: Array = quick_script.quick_options_for("sulk", "哼。")
-	var q_peek: Array = quick_script.quick_options_for("peek", "你在赶活儿啊。")
+	var q_peek: Array = quick_script.quick_options_for("peek", "你在忙活呀。")
 	_check(q_ask.size() == 3 and String(q_ask[0]).find("在呢") >= 0,
 		"快速回答：问句给答话 %s" % str(q_ask))
 	_check(q_talk.size() == 3 and String(q_talk[0]) != String(q_ask[0]),
