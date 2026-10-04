@@ -1,0 +1,17 @@
+# Normalize EOL for all files that Git considers text files.
+* text=auto eol=lf
+
+# ---------------------------------------------------------------------
+# .bat MUST stay CRLF.
+# cmd.exe parses a LF-only batch file wrongly and starts executing the
+# fragments of comments / string literals as commands. The two scripts
+# here carry that warning in their own header ("THREE RULES", rule 1).
+# Without this line, `git add` silently rewrites them to LF, GitHub
+# stores them as LF, and everyone who clones gets broken .bat files.
+# ---------------------------------------------------------------------
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Keep binary assets out of text normalization entirely.
+*.png binary
+*.glb binary

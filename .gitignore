@@ -1,0 +1,31 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# ---- 导出产物（本地跑出来的，不该进版本库）
+/dist/
+/build/
+*.exe
+*.pck
+*.zip
+
+# ---- 凭据类
+# Godot 默认把导出凭据写在 .godot/ 里（上面已经忽略），但从别处拷来的工程
+# 可能在根目录留一份 → 防一手
+export_credentials.cfg
+*.keystore
+*.p12
+*.pfx
+
+# ---- 密钥与用户数据
+# 正常情况下它们住在 user://（%APPDATA%\Godot\app_userdata\桌宠\），根本不在这儿。
+# 列出来是因为**改过 file_path 的人 / 手动拷过来的存档**可能把它们落在项目里 ——
+# 一旦提交就是"某个用户的 key 进了开源仓库"，那是不可撤回的
+pet_secret.dat
+pet_memory.json
+pet_chat.cfg
+
+# ---- 编辑器 / 系统杂物
+*.tmp
+Thumbs.db
+desktop.ini
