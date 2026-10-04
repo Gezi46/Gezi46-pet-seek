@@ -458,6 +458,10 @@ func _build_name_panel(layer: CanvasLayer) -> void:
 	# 居中的小卡片：就一格输入，占满整窗会显得很突兀
 	_name_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_name_panel.custom_minimum_size = Vector2(260, 0)
+	# 和 AI 面板同一个坑：只设锚点不设偏移，左上角落在窗口中心再往右下撑，
+	# 「就叫这个」按钮会跑到窗外。grow BOTH 才是真居中
+	_name_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_name_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	layer.add_child(_name_panel)
 
 	var vb := VBoxContainer.new()
@@ -523,6 +527,12 @@ func _build_ai_panel(layer: CanvasLayer) -> void:
 	# 居中的小卡片：这个面板只有五格，不需要占满整窗（设置面板才需要）
 	_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_panel.custom_minimum_size = Vector2(300, 0)
+	# ⚠️ 上面那行**只设锚点、不设偏移**：面板的左上角会落在窗口正中心，
+	# 然后被 min size 往右下撑开 —— 330 宽的窗口里右边被裁 144px、下面被裁 84px，
+	# 「保存 / 取消」两个按钮直接跑到窗外点不到（2026-10-04 用探针量出来的）。
+	# grow 设成 BOTH，尺寸被撑大时才会围绕锚点对称展开，这才是真居中
+	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	layer.add_child(_panel)
 
 	var vb := VBoxContainer.new()
