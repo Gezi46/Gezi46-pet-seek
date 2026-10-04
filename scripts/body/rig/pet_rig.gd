@@ -126,7 +126,7 @@ func _calibrate() -> void:
 	pet._calibrated = true
 
 	if OS.is_debug_build():
-		print("[桌宠] 采样 %d 个动画 -> 包围盒 %s（待机最低点 %.4f）" % [
+		print("[PetDeek] 采样 %d 个动画 -> 包围盒 %s（待机最低点 %.4f）" % [
 			probes.size(), pet._calib_aabb, idle_box.position.y])
 
 # ------------------------------------------------------------------ 动画工具
@@ -225,7 +225,7 @@ func _fix_crossed_leg_parts() -> void:
 			moved += 1
 
 	if OS.is_debug_build():
-		print("[桌宠] 腿部方块校正：移动 %d 块（不删除任何方块）" % moved)
+		print("[PetDeek] 腿部方块校正：移动 %d 块（不删除任何方块）" % moved)
 
 ## 找"某条腿"的骨骼节点。两个坑：
 ##   1. Godot 导入 glb 时会给重名节点加数字后缀，骨骼实际叫 LeftLeg9 / LeftFoot13
@@ -356,16 +356,16 @@ func _apply_loop_modes() -> void:
 			idle_a.loop_mode = Animation.LOOP_LINEAR
 			n += 1
 	if OS.is_debug_build():
-		print("[桌宠] 设为循环的动画：%d 个" % n)
+		print("[PetDeek] 设为循环的动画：%d 个" % n)
 
 func _play(name: String, blend: float = 0.15) -> void:
 	if not pet._has.has(name):
 		if OS.is_debug_build():
-			print("[桌宠] _play 跳过：没有动画 %s" % name)
+			print("[PetDeek] _play 跳过：没有动画 %s" % name)
 		return
 	if pet._anim.current_animation == name:
 		if OS.is_debug_build():
-			print("[桌宠] _play 跳过：已经在播 %s" % name)
+			print("[PetDeek] _play 跳过：已经在播 %s" % name)
 		return
 	pet._anim.play(name, blend)
 
@@ -413,6 +413,6 @@ func _ensure_walk_anim() -> void:
 	if pet._anim.current_animation == want:
 		return
 	if OS.is_debug_build():
-		print("[桌宠] 走路中动画跑偏（当前=%s，应为 %s），已纠正" % [
+		print("[PetDeek] 走路中动画跑偏（当前=%s，应为 %s），已纠正" % [
 			pet._anim.current_animation, want])
 	pet._anim.play(want, 0.2)

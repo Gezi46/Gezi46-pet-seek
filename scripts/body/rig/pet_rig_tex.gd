@@ -76,7 +76,7 @@ static func harden_materials(pet: Node3D) -> void:
 			mi.set_surface_override_material(si, cache[key])
 			touched += 1
 	if OS.is_debug_build():
-		print("[桌宠] 材质加固：%d 个 surface 共用 %d 个材质，filter=%d scissor=%.2f dilate=%dpx" % [
+		print("[PetDeek] 材质加固：%d 个 surface 共用 %d 个材质，filter=%d scissor=%.2f dilate=%dpx" % [
 			touched, cache.size(), pet.texture_filter_mode, pet.alpha_scissor_threshold, pet.dilate_pixels])
 
 ## 把每个三角形的 UV 朝它自己的 UV 包围盒中心收缩 `uv_inset_texels` 个 texel。
@@ -117,7 +117,7 @@ static func inset_uvs(pet: Node3D) -> void:
 		if made[key] != null:
 			mi.mesh = made[key]
 	if OS.is_debug_build():
-		print("[桌宠] UV 内缩 %.2f texel：重建 %d 个网格（%d 个实例共用）" % [
+		print("[PetDeek] UV 内缩 %.2f texel：重建 %d 个网格（%d 个实例共用）" % [
 			pet.uv_inset_texels, rebuilt, made.size()])
 
 static func _inset_mesh(src: Mesh, mi: MeshInstance3D, inset: float) -> ArrayMesh:

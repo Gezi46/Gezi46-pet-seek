@@ -244,7 +244,7 @@ func tick() -> void:
 		if Time.get_ticks_msec() >= _muted_wait_ms:
 			_muted_wait_ms = 0
 			if OS.is_debug_build():
-				print("[桌宠] 闭嘴超过 %d 分钟没被哄：去看看主人在忙什么" % int(SULK_RECONCILE_SEC / 60.0))
+				print("[PetDeek] 闭嘴超过 %d 分钟没被哄：去看看主人在忙什么" % int(SULK_RECONCILE_SEC / 60.0))
 			reconcile_check.emit()
 		return
 	if _wait_ms <= 0:
@@ -267,7 +267,7 @@ func tick() -> void:
 		# 怨气满 → 生气 / 伤心**对半**（2026-10-01 用户要求）
 		_full_kind = full_mood_pick(_host._rng.randf())
 		if OS.is_debug_build():
-			print("[桌宠] 连着被冷落 %d 次：她不主动开口了（%s，等哄）" % [
+			print("[PetDeek] 连着被冷落 %d 次：她不主动开口了（%s，等哄）" % [
 				int(SULK_MAX), mood_name(_full_kind)])
 		# 闭嘴后开始计时：超过 SULK_RECONCILE_SEC 还没被哄 → reconcile_check（见 tick 开头）
 		_muted_wait_ms = Time.get_ticks_msec() + int(SULK_RECONCILE_SEC * 1000.0)
@@ -284,7 +284,7 @@ func start_waiting() -> void:
 func soothe() -> void:
 	var was_upset := _sulk >= 1.0
 	if _sulk > 0.0 and OS.is_debug_build():
-		print("[桌宠] 消气了（之前委屈度 %.1f）" % _sulk)
+		print("[PetDeek] 消气了（之前委屈度 %.1f）" % _sulk)
 	_sulk = 0.0
 	_wait_ms = 0
 	_muted_wait_ms = 0
@@ -380,7 +380,7 @@ func touch(part: String) -> void:
 			# 手欠到这份上，值得让她记一笔 —— 以后她会自己防着点
 			worth = _sulk >= CHEST_NOTE_LEVEL
 		if OS.is_debug_build():
-			print("[桌宠] 摸到胸：%s（委屈度 %.1f）" % [
+			print("[PetDeek] 摸到胸：%s（委屈度 %.1f）" % [
 				"屡教不改" if again else "第一次", _sulk])
 		touch_line.emit(line, true, worth)
 		return

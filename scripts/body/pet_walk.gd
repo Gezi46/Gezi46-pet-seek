@@ -63,7 +63,7 @@ func _begin_move() -> void:
 	pet._timer = pet._rng.randf_range(dur.x, dur.y) * pet.behavior_pace
 	var anim := "run" if (pet._run and pet._has.has("run")) else "walk"
 	if OS.is_debug_build():
-		print("[桌宠] 开始移动：%s 动画=%s 时长=%.2fs 方向=%s" % [
+		print("[PetDeek] 开始移动：%s 动画=%s 时长=%.2fs 方向=%s" % [
 				"跑步" if pet._run else "走路", anim, pet._timer, pet._move_dir])
 	pet._play(anim, 0.15)
 

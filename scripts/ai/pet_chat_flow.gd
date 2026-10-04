@@ -165,10 +165,10 @@ func on_reachable(ok: bool) -> void:
 			_host._offline_said = false
 			_host._say("诶，好了！刚才像断线了一小会儿。")
 		if OS.is_debug_build():
-			print("[桌宠] AI 服务恢复：%s" % _host.chat_url)
+			print("[PetDeek] AI 服务恢复：%s" % _host.chat_url)
 		return
 	if OS.is_debug_build():
-		print("[桌宠] AI 服务不可达：%s（她进假死：只剩基础功能）" % _host.chat_url)
+		print("[PetDeek] AI 服务不可达：%s（她进假死：只剩基础功能）" % _host.chat_url)
 	if _host.hibernate_when_offline and not _host._offline_said and not _host.bubble.is_visible():
 		_host._offline_said = true
 		_host._say(_host.LINES_OFFLINE[_host._rng.randi_range(0, _host.LINES_OFFLINE.size() - 1)])

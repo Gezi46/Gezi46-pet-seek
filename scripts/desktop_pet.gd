@@ -721,7 +721,7 @@ func _ready() -> void:
 	# 依据是心跳文件，见 scripts/sys/pet_instance.gd
 	if _should_check_single_instance() and not instance.claim():
 		var who := instance.alive_pid()
-		print("[桌宠] 已经有一个我在跑了（pid %d），这次不起第二个" % who)
+		print("[PetDeek] 已经有一个我在跑了（pid %d），这次不起第二个" % who)
 		_log_line("没启动：已经有一个我在跑（pid %d）—— 两个实例会同时站在屏幕上" % who)
 		get_tree().quit()
 		return
@@ -809,7 +809,7 @@ func _ready() -> void:
 	walk._start_idle(walk._idle_time())
 
 	if OS.is_debug_build():
-		print("[桌宠] 动画=%d 待机=%s 落地抬升=%.4f 相机size=%.3f" % [
+		print("[PetDeek] 动画=%d 待机=%s 落地抬升=%.4f 相机size=%.3f" % [
 			_has.size(), _idle_anim, _ground_offset, _camera.size])
 
 func _process(delta: float) -> void:
@@ -903,7 +903,7 @@ func set_scale_percent(pct: float) -> void:
 ## 真正结束进程交给引擎（get_tree().quit() 在当帧末尾生效）
 func _quit() -> void:
 	if OS.is_debug_build():
-		print("[桌宠] 退出")
+		print("[PetDeek] 退出")
 	_close_panels()
 	_save_app_settings()
 	if shell != null:
@@ -963,9 +963,9 @@ func _update_quiet() -> void:
 	if q and not _was_quiet:
 		_quiet_center = DisplayServer.window_get_position()
 		if OS.is_debug_build():
-			print("[桌宠] 进入安静模式：活动中心=%s 半径=%.0fpx" % [_quiet_center, quiet_radius])
+			print("[PetDeek] 进入安静模式：活动中心=%s 半径=%.0fpx" % [_quiet_center, quiet_radius])
 	elif _was_quiet and not q and OS.is_debug_build():
-		print("[桌宠] 退出安静模式")
+		print("[PetDeek] 退出安静模式")
 	_was_quiet = q
 
 ## 安静模式下窗口左上角的允许范围（和屏幕可用区域的求交在 pet_walk._step_move 里做）
@@ -1353,7 +1353,7 @@ func _setup_harness() -> void:
 	harness.finished.connect(_on_harness_done)
 	harness.failed.connect(_on_harness_failed)
 	if OS.is_debug_build():
-		print("[桌宠] dsh：%s｜当前推理档=%s" % [
+		print("[PetDeek] dsh：%s｜当前推理档=%s" % [
 			harness.bin_js if harness.available else harness.last_error,
 			harness.current_effort()])
 
@@ -1410,7 +1410,7 @@ func _begin_harness(task: String) -> void:
 	_quick.hide()
 	bubble.hold_with("让我看看…可能要一会儿")
 	if OS.is_debug_build():
-		print("[桌宠] 派活给 dsh：%s（最高档 %s）" % [task, harness_max_effort])
+		print("[PetDeek] 派活给 dsh：%s（最高档 %s）" % [task, harness_max_effort])
 	if not harness.run(task, harness_max_effort):
 		_say("没跑起来：%s" % harness.last_error)
 
@@ -1419,7 +1419,7 @@ func _begin_harness(task: String) -> void:
 ##   工作台那条 → 原文直接摆在面板里（那儿就是"看结果"的地方），她只报一句
 func _on_harness_done(task: String, answer: String, ok: bool, effort: String) -> void:
 	if OS.is_debug_build():
-		print("[桌宠] dsh 回来：档位=%s 用时=%.1fs 成功=%s 答案 %d 字" % [
+		print("[PetDeek] dsh 回来：档位=%s 用时=%.1fs 成功=%s 答案 %d 字" % [
 			effort, harness.elapsed_sec(), ok, answer.length()])
 	if _harness_from_workbench:
 		_harness_from_workbench = false
@@ -1510,7 +1510,7 @@ func _on_workbench_run(task: String, opts: Dictionary) -> void:
 	_workbench.set_running(true,
 		PetHarness.clamp_effort(PetHarness.estimate_effort(task), harness_max_effort), workdir)
 	if OS.is_debug_build():
-		print("[桌宠] 工作台派活：%s（目录=%s 允许改文件=%s）" % [
+		print("[PetDeek] 工作台派活：%s（目录=%s 允许改文件=%s）" % [
 			task.substr(0, 60), workdir, str(allow_write)])
 	if not harness.run(task, harness_max_effort, workdir, allow_write):
 		_harness_from_workbench = false
@@ -1574,7 +1574,7 @@ func _log_startup() -> void:
 		stamp, OS.get_executable_path(), " ".join(OS.get_cmdline_args()),
 		shell.autostart_status() if shell != null else "（shell 没建起来）",
 		shell.autostart_cmd if shell != null else ""]
-	print("[桌宠] " + line)      # 编辑器里跑时顺便进引擎日志，开发时方便看
+	print("[PetDeek] " + line)      # 编辑器里跑时顺便进引擎日志，开发时方便看
 	_log_line(line)
 
 ## 退出也留一行（2026-09-29 用户报"我这里已经退出，为什么你那里显示没退出"）——
@@ -2322,7 +2322,7 @@ func _load_chat_config() -> void:
 		cfg.set_value("ai", "vision_key", "")
 		cfg.save(CHAT_CONFIG)
 		if OS.is_debug_build():
-			print("[桌宠] AI 密钥已从配置文件迁进加密文件（配置里从此不留明文）")
+			print("[PetDeek] AI 密钥已从配置文件迁进加密文件（配置里从此不留明文）")
 	else:
 		var keys: Array = PetSecret.load_keys()
 		if String(keys[0]) != "":
