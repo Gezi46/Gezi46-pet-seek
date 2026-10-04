@@ -46,9 +46,7 @@ if not defined GODOT_EXE for %%d in (
   "%ProgramFiles%\Steam\steamapps\common\Godot Engine"
   "C:\Steam\steamapps\common\Godot Engine"
   "D:\Steam\steamapps\common\Godot Engine"
-  "<Steam 目录>\steamapps\common\Godot Engine"
   "E:\Steam\steamapps\common\Godot Engine"
-  "E:\steam\steamapps\common\Godot Engine"
 ) do if not defined GODOT_EXE for %%f in (
   "%%~d\godot.exe"
   "%%~d\godot4.exe"
