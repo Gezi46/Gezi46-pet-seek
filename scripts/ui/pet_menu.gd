@@ -138,6 +138,8 @@ var _panel: PanelContainer = null
 var _provider_btn: OptionButton = null
 var _url_edit: LineEdit = null
 var _key_edit: LineEdit = null
+## 密钥那一行的「显示 / 隐藏」按钮
+var _key_eye: Button = null
 var _model_edit: LineEdit = null
 var _vision_edit: LineEdit = null
 var _status: Label = null
@@ -541,8 +543,18 @@ func _build_ai_panel(layer: CanvasLayer) -> void:
 	vb.add_child(_url_edit)
 
 	vb.add_child(PetUi.label("访问密钥", _font, 11, PetUi.TEXT_SUB))
-	_key_edit = PetUi.edit("官方 API 填 sk- 开头的 key；本地网页版填管理页第 ② 栏那串", _font)
-	vb.add_child(_key_edit)
+	# 密钥**默认遮起来**（2026-10-04 用户要求）：这个面板就摊在桌面上，截图 / 录屏 /
+	# 旁边有人看一眼，明文就直接泄了 —— 而它恰恰是这个项目最该防的东西。
+	# 要核对自己填了什么，点右边那个「显示」。secret 只影响显示，text 一直是真值
+	var key_row := PetUi.hbox(6)
+	_key_edit = PetUi.edit("官方 API 填 sk- 开头的 key；本地网页版填管理页第 ② 栏那串", _font, true)
+	_key_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	key_row.add_child(_key_edit)
+	_key_eye = PetUi.button("显示", _font)
+	_key_eye.tooltip_text = "点一下看明文（截图前记得切回来）"
+	_key_eye.pressed.connect(_toggle_key_visible)
+	key_row.add_child(_key_eye)
+	vb.add_child(key_row)
 
 	vb.add_child(PetUi.label("文本模型（聊天用）", _font, 11, PetUi.TEXT_SUB))
 	_model_edit = PetUi.edit("deepseek-flash", _font)
@@ -577,6 +589,14 @@ func set_ai_settings(d: Dictionary) -> void:
 		"vision_model": String(d.get("vision_model", "")),
 	}
 
+## 密钥那一行的「显示 / 隐藏」。
+## `secret` 只影响显示，`text` 始终是真值 —— 所以保存、复制都不受影响
+func _toggle_key_visible() -> void:
+	if _key_edit == null or _key_eye == null:
+		return
+	_key_edit.secret = not _key_edit.secret
+	_key_eye.text = "隐藏" if not _key_edit.secret else "显示"
+
 ## 选来源 = 把地址和两个模型填进表单（不落盘，要按保存才行）
 func _on_provider_picked(idx: int) -> void:
 	if idx < 0 or idx >= PROVIDERS.size():
@@ -592,6 +612,10 @@ func open_ai_panel(status: String = "") -> void:
 		return
 	_url_edit.text = String(_settings.get("url", ""))
 	_key_edit.text = String(_settings.get("key", ""))
+	# 每次打开都回到"遮起来"。上次看过的明文不该留在屏幕上
+	_key_edit.secret = true
+	if _key_eye != null:
+		_key_eye.text = "显示"
 	_model_edit.text = String(_settings.get("model", ""))
 	_vision_edit.text = String(_settings.get("vision_model", ""))
 	# 来源下拉只是助手：按地址反推当前选的是哪个，认不出来就不选

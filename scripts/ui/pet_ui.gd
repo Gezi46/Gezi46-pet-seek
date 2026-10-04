@@ -82,11 +82,14 @@ static func edit_style() -> StyleBoxFlat:
 ## **字色必须自己指定**：我们把底色换成了白的，但默认主题的字色是给深色底准备的
 ## 浅灰 —— 结果就是"打进去的字几乎看不见"，只有下标光标在动。
 ## （这个毛病在原来的 AI 设置面板里就有，只是没人细看。）
-static func edit(placeholder: String, font: Font) -> LineEdit:
+## secret = true 时显示成 •••••（`LineEdit.secret` 只影响**显示**，`text` 始终是真值，
+## 所以保存、复制、回车提交都不受影响）。密钥用它，见 pet_menu 的「AI 服务设置」
+static func edit(placeholder: String, font: Font, secret: bool = false) -> LineEdit:
 	var e := LineEdit.new()
 	apply_font(e, font)
 	e.add_theme_font_size_override("font_size", 12)
 	e.placeholder_text = placeholder
+	e.secret = secret
 	e.add_theme_color_override("font_color", TEXT_MAIN)
 	e.add_theme_color_override("font_selected_color", TEXT_MAIN)
 	e.add_theme_color_override("caret_color", TEXT_MAIN)
