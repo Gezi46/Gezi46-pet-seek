@@ -10,11 +10,11 @@ config_version=5
 
 [application]
 
-config/name="PeekDeek"
-config/description="PeekDeek：住在桌面上的蓝发女仆桌宠（Blockbench 模型 + Godot 4.7 无边框置顶窗口、拖拽、随机走动）"
+config/name="PetDeek"
+config/description="PetDeek：住在桌面上的蓝发女仆桌宠（Blockbench 模型 + Godot 4.7 无边框置顶窗口、拖拽、随机走动）"
 run/main_scene="res://scenes/pet.tscn"
 ; ⚠️ use_custom_user_dir 这两行**必须留着**（2026-10-04）：
-; config/name 一改，user:// 的默认目录就跟着变成 %APPDATA%\Godot\app_userdata\PeekDeek\，
+; config/name 一改，user:// 的默认目录就跟着变成 %APPDATA%\Godot\app_userdata\PetDeek\，
 ; 于是她的长期记忆 / 配置 / 密钥（都住在 ...\app_userdata\桌宠\）会全部"失联" ——
 ; 看起来就像她突然失忆 + 要重新填 key。app_userdata 下那个 "DeepSeek 酱 · 桌宠"
 ; 目录就是以前改名留下的残骸。
