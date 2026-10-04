@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 流式（SSE）分片解析：把 OpenAI 兼容的 `data: {...}` 行变成「正文增量 / 思考增量 / 收尾 / 出错」。
 ##

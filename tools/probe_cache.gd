@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 extends SceneTree
 ## 测「前缀缓存命中率」——把响应里的 usage 打出来。跑四发请求：

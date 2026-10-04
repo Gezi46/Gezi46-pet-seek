@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 按当前代码把"开机自启动"重新登记一次，并把结果读回来。
 ##

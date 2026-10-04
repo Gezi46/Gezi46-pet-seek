@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 extends RefCounted
 ## 聊天输入面板的**样子与开关**：搭 UI、开 / 收、送出一句话、记录与滚动。

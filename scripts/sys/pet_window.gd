@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 extends RefCounted
 ## 窗口 / 缩放 / 家：背景切换、机位与落地、归一化"家"锚点的存取

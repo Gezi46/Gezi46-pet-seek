@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 extends SceneTree
 ## 贴图分析（关键）：完全透明、但紧贴着不透明像素的那圈 texel，RGB 到底是什么颜色。

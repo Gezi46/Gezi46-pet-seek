@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 extends RefCounted
 ## 记忆 / 人设 / 上下文的**宿主侧**：建记忆、拼人设、每轮的上下文、

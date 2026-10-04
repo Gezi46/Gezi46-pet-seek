@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 extends SceneTree
 ## 打印每个动画的"真实长度"和"脚本算出来的动作时长"(_action_time)，

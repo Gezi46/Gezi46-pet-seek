@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 extends RefCounted
 ## 行为：待机 / 起步 / 随机散步 / 回家引力 / 沿屏幕走 / 平滑朝向

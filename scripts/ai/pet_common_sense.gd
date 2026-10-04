@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 桌宠的「常识库」：一个刚高中毕业的 18 岁女孩本来就知道的那些东西。
 ##

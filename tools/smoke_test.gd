@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 extends SceneTree
 ## 冒烟测试：把 pet.tscn 真的跑起来，检查有没有脚本/动画错误，并截图。

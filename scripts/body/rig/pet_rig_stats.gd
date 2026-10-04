@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 动画的**采样与统计**：一个一次性动作"真正做到哪一刻"、因此该计多长。
 ##

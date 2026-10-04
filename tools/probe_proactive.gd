@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 主动对话模块（pet_proactive.gd）的离线自检 —— 2026-09-29 第③条搬家之后补的。
 ##

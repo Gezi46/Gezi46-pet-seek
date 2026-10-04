@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 桌宠改窗口样式 / 托盘图标用的 **PowerShell 脚本源码**（运行时写到 user://pet_shell_window.ps1）。
 ##

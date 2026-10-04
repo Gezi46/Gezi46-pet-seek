@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 自检里"**她那边**"的那几组：人设 / 提示词 / 她该说什么（快速回答的候选句）。
 ##

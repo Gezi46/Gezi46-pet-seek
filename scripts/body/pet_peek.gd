@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 「偷看屏幕」和「看一眼摄像头」：她隔一阵自己抓一张画面，交给视觉模型说一句。
 ##

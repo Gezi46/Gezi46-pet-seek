@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 跟 Windows 系统打交道的那三件：**隐藏任务栏图标**、**开机自启动**、
 ## 以及它们共用的一套执行层（"拼一次 PowerShell / reg 调用并等它返回"）。

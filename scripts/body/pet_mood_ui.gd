@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 extends RefCounted
 ## 情绪 / 触摸的「开口 + 哄她选择框」层（2026-10-01 从 desktop_pet.gd 拆出）。

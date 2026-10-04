@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## token 账：从服务商给的 usage 里取"命中多少 / 未命中多少"，并拼那一行日志。
 ##
