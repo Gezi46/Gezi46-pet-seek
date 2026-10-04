@@ -111,13 +111,19 @@ func start() -> void:
 ## 把项目图标解出来给托盘用。
 ## 导出版里 `res://icon.png` 是 PCK 里的一段数据、不是文件路径，而托盘要真实文件，
 ## 所以读出来写到 user://。读不到就返回空串（辅助脚本那边退回系统默认图标）。
+##
+## ⚠️ 原来是"缓存文件已存在就直接返回" —— 于是**换了 icon.png，托盘图标也不会变**：
+## 那份缓存是第一次运行时写下的，之后永远沿用（2026-10-04 用户报"小图标还是没有变"，
+## 查出来缓存还是一个月前生成的那一版）。现在比内容，不一样就重写。
 func _ensure_tray_icon() -> String:
 	var out := ProjectSettings.globalize_path("user://pet_shell_icon.png")
-	if FileAccess.file_exists(out):
-		return out
 	var bytes := FileAccess.get_file_as_bytes("res://icon.png")
 	if bytes.is_empty():
 		return ""
+	if FileAccess.file_exists(out):
+		# 内容一样就别白写 —— 这函数每次拉起辅助进程都会走一遍
+		if FileAccess.get_file_as_bytes(out) == bytes:
+			return out
 	var f := FileAccess.open(out, FileAccess.WRITE)
 	if f == null:
 		return ""
