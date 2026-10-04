@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 记忆的**分层与遗忘**：一条记忆属于哪一层、忘得多快、什么时候清掉、什么时候巩固。
 ##

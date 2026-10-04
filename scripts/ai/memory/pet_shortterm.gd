@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 短期记忆 —— "她主动说的话，主人没接" 那一类（2026-09-29 用户要求，第②条）。
 ##

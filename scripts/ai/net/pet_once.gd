@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 一次性（非流式）请求：给"记忆抽取 / 摘要 / 候选句子"这类后台小任务用。
 ##

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 「她自己开口」那一条 —— 计时、四档频率、开口前的门禁、以及真正把话说出去。
 ## （2026-09-29 第③条：用户要"主动对话单做模块"，顺带把短期记忆的消费点收进来）

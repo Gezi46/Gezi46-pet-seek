@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 「命令通道 + 看门狗」：那个后台辅助进程（PowerShell 小循环）的生死，以及和它的双向通信。
 ##

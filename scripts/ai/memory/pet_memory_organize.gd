@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 记忆的"管理与整理"模块 —— 负责把同一件事的**近义条目**合并成一条（去重）。
 ## 2026-09-30 用户要求：专门给记忆加一个"整理"模块，解决"同一件事被抽成 N 条近义"的问题

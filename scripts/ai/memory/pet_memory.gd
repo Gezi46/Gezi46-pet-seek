@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 长期记忆系统 —— 从 giftia 的 backend/memory_manager.py 移植过来的那套机制的 GDScript 版。
 ##

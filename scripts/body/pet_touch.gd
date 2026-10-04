@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 「被摸到的反应」：摸头 / 摸胸 / 摸手……她说什么、播什么动作、要不要记一笔。
 ##

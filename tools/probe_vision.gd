@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 extends SceneTree
 ## 验"偷看屏幕"整条链路：从 user://pet_chat.cfg 读设置 → 抓屏 → 视觉模型 → 打印回复。

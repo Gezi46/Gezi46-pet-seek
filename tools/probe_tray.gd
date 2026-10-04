@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 验"托盘图标"这条链路：
 ##   A 辅助进程起来了（命令行里带着托盘要的参数），图标文件也解出来了

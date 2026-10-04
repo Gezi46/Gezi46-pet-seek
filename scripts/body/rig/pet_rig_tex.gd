@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 <YOUR NAME OR GITHUB USERNAME>
+# Copyright (C) 2026 Gezi46
 #
 ## 贴图 / 材质修整：把像素画渲染出来的杂讯消干净（轮廓白边、棱边白锯齿、UV 越界渗色）。
 ##
