@@ -1,0 +1,122 @@
+[gd_scene format=3 uid="uid://cofjtyctk4rpq"]
+
+[ext_resource type="Script" uid="uid://b76dexihubxcx" path="res://scripts/desktop_pet.gd" id="1_8wqpi"]
+[ext_resource type="PackedScene" uid="uid://c15oea04d7i3" path="res://peekdeek_opt.glb" id="2_qd1if"]
+
+[sub_resource type="Environment" id="Environment_btp34"]
+ambient_light_color = Color(0, 0, 0, 0)
+
+[sub_resource type="Environment" id="Environment_hmkkh"]
+background_mode = 3
+background_color = Color(0, 0, 0, 0)
+ambient_light_source = 2
+ambient_light_color = Color(0.86, 0.9, 1, 1)
+ambient_light_energy = 0.85
+tonemap_mode = 2
+tonemap_white = 1.2
+
+[sub_resource type="Shader" id="Shader_6nmc3"]
+code = "
+shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_disabled, unshaded, shadows_disabled;
+uniform float strength : hint_range(0.0, 1.0) = 0.5;
+void fragment() {
+	float d = length(UV - vec2(0.5)) * 2.0;
+	float a = smoothstep(1.0, 0.05, d);
+	ALBEDO = vec3(0.0);
+	ALPHA = a * strength;
+}
+"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_axfbl"]
+render_priority = 0
+shader = SubResource("Shader_6nmc3")
+shader_parameter/strength = 0.5
+
+[sub_resource type="QuadMesh" id="QuadMesh_5c8qe"]
+size = Vector2(1.6, 1.6)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hio3l"]
+content_margin_left = 7.0
+content_margin_top = 7.0
+content_margin_right = 7.0
+content_margin_bottom = 7.0
+bg_color = Color(1, 1, 1, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.55, 0.68, 0.92, 0.95)
+corner_radius_top_left = 9
+corner_radius_top_right = 9
+corner_radius_bottom_right = 9
+corner_radius_bottom_left = 9
+
+[node name="Pet" type="Node3D" unique_id=1647148558]
+script = ExtResource("1_8wqpi")
+
+[node name="Character" type="Node3D" parent="." unique_id=1469519705]
+
+[node name="Pivot" type="Node3D" parent="Character" unique_id=901490455]
+
+[node name="Model" parent="Character/Pivot" unique_id=888971001 instance=ExtResource("2_qd1if")]
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=144135332]
+transform = Transform3D(1, 0, 0, 0, 0.99997044, 0.0076920823, 0, -0.0076920823, 0.99997044, 0, 0.7, 6.5)
+environment = SubResource("Environment_btp34")
+projection = 1
+fov = 40.0
+size = 3.2
+far = 100.0
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1818748691]
+environment = SubResource("Environment_hmkkh")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="." unique_id=2108883817]
+transform = Transform3D(0.8480481, -0.32625088, 0.4175821, 0, 0.7880108, 0.6156615, -0.52991927, -0.5221106, 0.668271, 0, 0, 0)
+light_color = Color(1, 0.97, 0.92, 1)
+light_energy = 1.15
+shadow_enabled = true
+directional_shadow_max_distance = 12.0
+
+[node name="FillLight" type="DirectionalLight3D" parent="." unique_id=1905382897]
+transform = Transform3D(-0.61566144, 0.19063707, -0.7646035, 0, 0.9702957, 0.2419219, 0.7880108, 0.148942, -0.59737366, 0, 0, 0)
+light_color = Color(0.78, 0.86, 1, 1)
+light_energy = 0.35
+
+[node name="Shadow" type="MeshInstance3D" parent="." unique_id=649617118]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.006, 0)
+material_override = SubResource("ShaderMaterial_axfbl")
+mesh = SubResource("QuadMesh_5c8qe")
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=1926662126]
+
+[node name="Anchor" type="Control" parent="UI" unique_id=1661921270]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Bubble" type="Label" parent="UI/Anchor" unique_id=1660758782]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+offset_left = 12.0
+offset_top = 8.0
+offset_right = -12.0
+offset_bottom = 58.0
+theme_override_colors/font_color = Color(0.1, 0.12, 0.2, 1)
+theme_override_colors/font_outline_color = Color(1, 1, 1, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_hio3l")
+horizontal_alignment = 1
+autowrap_mode = 3
+
+; 菜单条目由 scripts/pet_menu.gd 在运行时整棵搭起来（分类子菜单 + 勾选项），
+; 所以这里只留一个空的 PopupMenu 节点。以前写死在这里的那套 item_N 已经删掉 ——
+; 那种写法没法分组，也加不了子菜单。
+[node name="Menu" type="PopupMenu" parent="UI" unique_id=1188709971]
