@@ -455,11 +455,13 @@ func _build_name_panel(layer: CanvasLayer) -> void:
 	_name_panel = PetUi.panel()
 	_name_panel.name = "RenamePet"
 	_name_panel.visible = false
-	# 居中的小卡片：就一格输入，占满整窗会显得很突兀
+	# 居中的小卡片：就一格输入，占满整窗会显得很突兀。
+	# 宽度得**跟窗口走**：缩放档调到 75% 时窗口只有 ~248 宽，写死 260 就伸出去了
+	# （AI 面板就是这么坏的）。200 在小档下也放得下，还保住了"小卡片"的样子
 	_name_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_name_panel.custom_minimum_size = Vector2(260, 0)
-	# 和 AI 面板同一个坑：只设锚点不设偏移，左上角落在窗口中心再往右下撑，
-	# 「就叫这个」按钮会跑到窗外。grow BOTH 才是真居中
+	_name_panel.custom_minimum_size = Vector2(200, 0)
+	# 只设锚点不设偏移的话，左上角会落在窗口中心再往右下撑 —— 「就叫这个」按钮
+	# 就跑到窗外了。grow BOTH 才是真居中
 	_name_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_name_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	layer.add_child(_name_panel)
@@ -473,7 +475,9 @@ func _build_name_panel(layer: CanvasLayer) -> void:
 	# 回车 = 按保存。敲完名字顺手回车是最自然的动作，不该逼人再去点按钮
 	_name_edit.text_submitted.connect(func(_t: String) -> void: _on_name_ok())
 	vb.add_child(_name_edit)
-	vb.add_child(PetUi.label("写进人设提示词；留空 = 回到默认的「小蓝」", _font, 11, PetUi.TEXT_SUB))
+	# 这句偏长，**必须能换行**（hint 自带 autowrap）—— 用 label 的话它的最小宽度
+	# 会把卡片顶到 250+，在小窗口下又伸出去了
+	vb.add_child(PetUi.hint("写进人设提示词；留空 = 回到默认的「小蓝」", _font))
 
 	var row := PetUi.hbox(6)
 	row.alignment = BoxContainer.ALIGNMENT_END
@@ -524,15 +528,16 @@ func _build_ai_panel(layer: CanvasLayer) -> void:
 	_panel = PetUi.panel()
 	_panel.name = "AiSettings"
 	_panel.visible = false
-	# 居中的小卡片：这个面板只有五格，不需要占满整窗（设置面板才需要）
-	_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_panel.custom_minimum_size = Vector2(300, 0)
-	# ⚠️ 上面那行**只设锚点、不设偏移**：面板的左上角会落在窗口正中心，
-	# 然后被 min size 往右下撑开 —— 330 宽的窗口里右边被裁 144px、下面被裁 84px，
-	# 「保存 / 取消」两个按钮直接跑到窗外点不到（2026-10-04 用探针量出来的）。
-	# grow 设成 BOTH，尺寸被撑大时才会围绕锚点对称展开，这才是真居中
-	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	# 占满整窗，**不要写固定宽度**（和设置面板同一个理由，那边的注释早就写明了：
+	# "窗口本身只有 330x470，而且缩放档还会把它变小 —— 固定尺寸在小档下会溢出到窗外"）。
+	# 原来这里是 custom_minimum_size = Vector2(300, 0)：缩放档调到 75% 时窗口只剩
+	# ~248 宽，面板永远比窗口宽 —— 右半截看不见、「保存」按钮在窗外点不到
+	# （2026-10-04 用户报的"显示不完全、没法保存密钥"就是这个）。
+	_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_panel.offset_left = 4.0
+	_panel.offset_top = 4.0
+	_panel.offset_right = -4.0
+	_panel.offset_bottom = -4.0
 	layer.add_child(_panel)
 
 	var vb := VBoxContainer.new()
@@ -540,19 +545,32 @@ func _build_ai_panel(layer: CanvasLayer) -> void:
 	_panel.add_child(vb)
 
 	vb.add_child(PetUi.label("AI 服务", _font, 13, PetUi.TEXT_MAIN))
+
+	# 五格输入在小窗口里会放不下 —— 中间这段可滚动，标题和按钮钉住不动
+	# （和设置面板同一套布局）。横向滚动关掉：横向只许换行，不许把面板撑宽
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vb.add_child(scroll)
+
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 5)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(body)
+
 	# 来源下拉只是个"填表助手"：选完把地址和两个模型填进去，之后还能手改
 	_provider_btn = OptionButton.new()
 	PetUi.apply_font(_provider_btn, _font)
 	for p in PROVIDERS:
 		_provider_btn.add_item(String(p["name"]))
 	_provider_btn.item_selected.connect(_on_provider_picked)
-	vb.add_child(_provider_btn)
+	body.add_child(_provider_btn)
 
-	vb.add_child(PetUi.label("后端地址", _font, 11, PetUi.TEXT_SUB))
+	body.add_child(PetUi.label("后端地址", _font, 11, PetUi.TEXT_SUB))
 	_url_edit = PetUi.edit("https://api.deepseek.com 或 http://127.0.0.1:8520/v1", _font)
-	vb.add_child(_url_edit)
+	body.add_child(_url_edit)
 
-	vb.add_child(PetUi.label("访问密钥", _font, 11, PetUi.TEXT_SUB))
+	body.add_child(PetUi.label("访问密钥", _font, 11, PetUi.TEXT_SUB))
 	# 密钥**默认遮起来**（2026-10-04 用户要求）：这个面板就摊在桌面上，截图 / 录屏 /
 	# 旁边有人看一眼，明文就直接泄了 —— 而它恰恰是这个项目最该防的东西。
 	# 要核对自己填了什么，点右边那个「显示」。secret 只影响显示，text 一直是真值
@@ -564,17 +582,22 @@ func _build_ai_panel(layer: CanvasLayer) -> void:
 	_key_eye.tooltip_text = "点一下看明文（截图前记得切回来）"
 	_key_eye.pressed.connect(_toggle_key_visible)
 	key_row.add_child(_key_eye)
-	vb.add_child(key_row)
+	body.add_child(key_row)
 
-	vb.add_child(PetUi.label("文本模型（聊天用）", _font, 11, PetUi.TEXT_SUB))
+	body.add_child(PetUi.label("文本模型（聊天用）", _font, 11, PetUi.TEXT_SUB))
 	_model_edit = PetUi.edit("deepseek-flash", _font)
-	vb.add_child(_model_edit)
+	body.add_child(_model_edit)
 
-	vb.add_child(PetUi.label("视觉模型（偷看屏幕 / 看摄像头用）", _font, 11, PetUi.TEXT_SUB))
+	body.add_child(PetUi.label("视觉模型（偷看屏幕 / 看摄像头用）", _font, 11, PetUi.TEXT_SUB))
 	_vision_edit = PetUi.edit("deepseek-v4-flash-vision-exp（留空 = 关掉看图）", _font)
-	vb.add_child(_vision_edit)
+	body.add_child(_vision_edit)
 
-	_status = PetUi.label("", _font, 11, PetUi.TEXT_WARN)
+	# 状态那行**必须能换行**：它装的是 desktop_pet.gd 里"连不上 %s —— 官方 API 要能
+	# 上网；本地网页版要先双击它的 start.cmd"这种整句。用 label（不带 autowrap）的话，
+	# 它的最小宽度就是整句的宽度（~500px），会把面板撑得比窗口还宽。
+	# PetUi.hint 自带 autowrap，所以状态一律走它
+	_status = PetUi.hint("", _font)
+	_status.add_theme_color_override("font_color", PetUi.TEXT_WARN)
 	vb.add_child(_status)
 
 	var row := PetUi.hbox(6)
