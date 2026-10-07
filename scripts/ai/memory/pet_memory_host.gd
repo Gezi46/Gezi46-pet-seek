@@ -22,7 +22,7 @@ extends RefCounted
 ##   host._chat / host._vision / host.harness                     三个客户端
 ##   host.chat_persona_name / host.chat_system_prompt             人设参数
 ##   host._mood / host._state / host._chat_streaming              当前状态
-##   host._quick / host._gpu_passthrough                          候选按钮
+##   host._quick / host._gpu_busy                                 候选按钮
 ##   host._shortterm                                              短期记忆
 ##   host._last_origin / host._last_talk_ms / host._opts_kind_override  会话状态
 ##   host.vision_model / host.vision_access_key / host.chat_access_key   看图判定
@@ -100,8 +100,9 @@ func context_for(query: String) -> String:
 		"user_text": query,
 		"memory": _host.memory if _host.memory_enabled else null,
 		"state_text": pet_state_text(),
-		"mood": _host._mood.mood_name(_host._mood.mood()),  # 当前心情（生气/伤心/开心/坏心眼/平常）
-		"sulk": _host._mood.level(),   # 生闷气也进上下文，她的口气才接得上（见 pet_persona）
+		# 当前心情：**一段拼好的话**（主导维一句 + 次要维一句 + "别报数值"的约束）。
+		# 三维占比那套语义不许往这边漏 —— 怎么描述是 pet_mood.describe() 的事（见 pet_persona）
+		"mood_text": _host._mood.describe(),
 		"gap_min": gap_min,            # 距上次说话多久 —— 配合 PetPersona.now_line() 的实时时间
 		"started_at": _host._started_at,   # 几点启动的，让她对"启动"有概念
 	})
@@ -155,8 +156,8 @@ func note_reply(reply: String, given: Array = []) -> void:
 	# 那就直接用，不再为按钮多发一次请求
 	# GPU 自动透视中（打游戏）：**一律不递候选按钮**（2026-10-03 用户要求）。
 	# 判断放这一层：要不要给按钮本来就是宿主的决定。pet_quick 那边也留了一道
-	# （after_reply / show_given 开头都看 _gpu_passthrough），双保险
-	if not _host._gpu_passthrough:
+	# （after_reply / show_given 开头都看 _gpu_busy），双保险
+	if not _host._gpu_busy:
 		if not given.is_empty():
 			_host._quick.show_given(kind, reply.strip_edges(), given)
 		else:

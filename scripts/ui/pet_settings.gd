@@ -142,9 +142,9 @@ const SECTIONS: Array = [
 		"items": [
 			{"k": "quiet_fullscreen", "t": "check", "label": "全屏时保持安静",
 				"hint": "看视频 / 玩游戏时只在家的附近小范围挪动。关掉就不再留那个后台检测进程"},
-			{"k": "gpu_threshold", "t": "float", "label": "GPU 占用率透视阈值（%）",
+			{"k": "gpu_threshold", "t": "float", "label": "GPU 忙就不走动（%）",
 				"min": 0.0, "max": 100.0, "step": 1.0,
-				"hint": "GPU 占用率超过这个值（打游戏）她自动整窗穿透：不挡游戏、也不被误触。0 = 关掉自动透视"},
+				"hint": "GPU 占用率超过这个值（打游戏 / 跑重活）她就待在原地不走了，也不弹候选按钮。0 = 关掉"},
 			{"k": "hide_taskbar", "t": "check", "label": "隐藏任务栏图标",
 				"hint": "不在任务栏和 Alt+Tab 里出现，桌面上照常显示"},
 			{"k": "tray_icon", "t": "check", "label": "托盘图标",

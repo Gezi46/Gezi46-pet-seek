@@ -28,7 +28,7 @@ extends RefCounted
 ##   host._chat_streaming / _last_origin / _offline_said   会话状态
 ##   host._menu_mod / chat_enabled / chat_url / hibernate_when_offline
 ##   host._rng / host.LINES_OFFLINE / host.OPTIONS_MARK
-##   host._gpu_passthrough                        打游戏时不递候选
+##   host._gpu_busy                               打游戏时不递候选
 
 ## 宿主（desktop_pet.gd）。弱类型：它 preload 本模块，标上就成循环 preload
 var _host = null

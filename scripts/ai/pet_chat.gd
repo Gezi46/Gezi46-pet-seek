@@ -110,6 +110,9 @@ var _sse := Conn.new()
 const Net := preload("res://scripts/ai/net/pet_net.gd")
 const Probe := preload("res://scripts/ai/pet_probe.gd")
 const Usage := preload("res://scripts/ai/pet_usage.gd")
+## 日志（见 scripts/sys/pet_log.gd）。请求失败是**最常被报的那类问题**
+## （"她不理我"），而屏幕上那句话飘一下就没了 —— 落一份文件才留得住现场
+const PetLog := preload("res://scripts/sys/pet_log.gd")
 var _probe := Probe.new()
 ## 一次性请求（记忆抽取 / 摘要）。单独一条连接，所以后台跑它不会挡住正在流的对话
 ## 一次性请求（记忆抽取 / 摘要 / 候选）那条整块在 **scripts/pet_once.gd**（作业单 B1.3）：
@@ -366,6 +369,9 @@ func _on_bg_got(code: int, body: String) -> void:
 
 ## 连不上 / 超时：这类没有"响应"可解释，直接报给调用方
 func _on_bg_failed(msg: String) -> void:
+	# 后台那条（记忆抽取 / 摘要 / 候选）失败**界面上完全看不出来** ——
+	# 表现只是"她好像没记住"。这里不落一份，就永远查不到
+	PetLog.warn("聊天", "后台请求失败：%s" % msg)
 	once_failed.emit(msg)
 
 # ------------------------------------------------------------------ 流式解析
@@ -505,6 +511,8 @@ func _fail() -> void:
 	# "连不上"这类是后端整体不可达，标记出来让上层提示
 	if msg.contains("连不上") or msg.contains("连接失败"):
 		reachable_set(false)
+	# 落一份到日志再往上抛：用户报"她不理我"时，现场就在这一行里（后端地址 + 原因）
+	PetLog.err("聊天", "这一次没发出去：%s ｜ 后端 %s" % [msg, url])
 	failed.emit(msg)
 	stream_ended.emit()
 

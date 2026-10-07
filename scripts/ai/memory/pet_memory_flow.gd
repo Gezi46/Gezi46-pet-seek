@@ -105,6 +105,11 @@ func note_observation(origin: String, reply: String) -> void:
 	var memory = _host.memory
 	if memory == null:
 		return
+	# 她"看到的东西"先过一眼情绪：主人过得健不健康 / 开不开心 → 悲伤那条靠这个自主积攒
+	# （2026-10-07 用户要求）。**只认看图那三条** —— 主动搭话 / 派活那几条是她自己编的话，
+	# 不能拿来当"主人生活"的证据（它们已经由 _submit_chat 那条从主人原话里过了一遍）
+	if origin == "peek" or origin == "sulk_peek" or origin == "camera":
+		_host._mood.say_about_master(reply)
 	# 生闷气这条要更严一点：偶尔一句话没人接太常见了，头一次就记进记忆反而奇怪。
 	# 连着被冷落（委屈度 >= 2）才值得记，而且半小时内不重复记 ——
 	# 这就是"生闷气也可以选择性加入记忆"里的那个"选择性"

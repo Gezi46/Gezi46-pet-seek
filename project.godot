@@ -24,6 +24,15 @@ config/custom_user_dir_name="Godot/app_userdata/桌宠"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.png"
 
+[debug]
+
+; 把引擎自己的日志也落盘（user://logs/godot.log）——**导出版里也要**。
+; 默认只在编辑器里写文件，而导出的 exe 没有控制台：脚本报错、加载失败这些东西
+; 一闪就没，用户只能说"它不动了"。开了这个，那些行就留在文件里，能被「导出日志」收走。
+; 桌宠自己那份（user://logs/pet.log）由 scripts/sys/pet_log.gd 写，和这里无关。
+file_logging/enable_file_logging=true
+file_logging/enable_file_logging.pc=true
+
 [display]
 
 window/size/viewport_width=330

@@ -87,8 +87,9 @@ const ID_PROACTIVE_PEEK := 34
 const ID_SOOTHE := 35
 ## 高峰时段少说话：晚上 AI 高峰时把主动开口间隔 ×5（2026-09-29 用户要求）
 const ID_PEAK_REDUCE := 36
-## 透明模式（点不到我）：整窗不接鼠标，点不到她、也不挡后面的窗口（2026-09-30 用户要求）
-const ID_GHOST := 37
+## 37 是**退役**的号：它原来叫「透明模式（点不到我）」，2026-10-05 整块删掉了。
+## 留着这个空号是为了**以后别再复用** —— 翻旧提交看到 id 37 时，一眼就知道那是个
+## 已经不存在的东西，而不是"某个我还没找到的功能"
 ## 回复按钮的出现频率。四档单选，对应 quick_chance 的值（见 desktop_pet._set_quick_chance）
 const ID_QUICK_NEVER := 38
 const ID_QUICK_RARE := 39
@@ -103,6 +104,9 @@ const ID_MOVE_OFTEN := 45
 ## "改成可以在菜单随意命名"）。名字本来就在设置面板里有，但要翻两层再滚到那一项，
 ## 改名这种"顺手就干"的事不该这么绕
 const ID_RENAME := 46
+## 「导出日志…」：把运行日志 + 系统信息收成一份丢到桌面（见 scripts/sys/pet_log.gd）。
+## 放一级菜单是**故意的**：她出问题时，用户正着急，不该再翻两层子菜单去找
+const ID_EXPORT_LOG := 47
 ## 自启动状态那一行：只用来显示，点了什么也不做。
 ## 给个大编号躲开真实动作的号段 —— 万一哪天漏了拦截，也不会误触发别的功能
 const ID_AUTOSTART_STATUS := 900
@@ -197,8 +201,6 @@ func _build_menu() -> void:
 	where.add_submenu_node_item("移动频率", mrate)
 	where.add_separator()
 	_item(where, "窗口置顶", ID_TOGGLE_TOP)
-	_toggle(where, "透明模式（点不到我）", ID_GHOST,
-		"整窗不再接鼠标：点不到她、也不挡她后面的窗口；托盘图标里也能切回来")
 	where.add_separator()
 	_item(where, "小 (75%)", ID_SCALE_75)
 	_item(where, "中 (100%)", ID_SCALE_100)
@@ -259,6 +261,9 @@ func _build_menu() -> void:
 		+ "干完一键重启她")
 	_item(_menu, "给她起个名字…", ID_RENAME, "改完立刻生效（写进人设提示词）；留空就回到默认的「小蓝」")
 	_item(_menu, "设置…", ID_SETTINGS)
+	_menu.add_separator()
+	_item(_menu, "导出日志…", ID_EXPORT_LOG,
+		"把她这次的运行日志和系统信息收成一份放桌面 —— 她不对劲时把这个发给我")
 	_item(_menu, "退出", ID_QUIT)
 
 ## 每个子菜单单独连一次 id_pressed —— 点了子项也要转成 action
@@ -414,10 +419,6 @@ func sync_toggles(proactive: bool, peek: bool, camera: bool, proactive_peek: boo
 ## 「高峰时段少说话」的勾选同步（和主动说话那几个并列）
 func sync_peak_reduce(on: bool) -> void:
 	_set_checked(ID_PEAK_REDUCE, on)
-
-## 「透明模式」的勾选同步
-func sync_ghost(on: bool) -> void:
-	_set_checked(ID_GHOST, on)
 
 ## 「只在小范围走动」的勾选同步（它不属于上面任何一组，单独一个）
 func sync_stay_nearby(on: bool) -> void:

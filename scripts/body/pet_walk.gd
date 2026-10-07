@@ -38,6 +38,15 @@ func _begin_move() -> void:
 		pet._timer = _idle_time()
 		return
 
+	# GPU 占用率高（在打游戏 / 跑重活）：**待在原地不动**。
+	# 放在骰子**前面**的理由和上面那条一样：掷中了也不走，
+	# 否则 move_chance 一调高这层就形同虚设。
+	# 注意**只是不走** —— 眨眼 / 呼吸 / 被摸被拖全都照旧，她还是活的，只是不挪窝
+	# （阈值与检测见 desktop_pet.gpu_threshold / shell.gpu_usage）
+	if pet._gpu_busy:
+		pet._timer = _idle_time()
+		return
+
 	# 待机时间到 ≠ 必须起身 —— 先掷一次骰子，没中就地再等一轮。
 	# 这是"减小移动概率"的主开关（以前是时间一到必定走）
 	if pet._rng.randf() >= pet.move_chance:

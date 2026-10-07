@@ -51,9 +51,10 @@ const SULK_COLD_LINES: Array[String] = [
 const MOOD_ACTIONS: Dictionary = {
 	PetMood.Mood.HAPPY: "riptide",       # 高兴：转圈（用户指定，模型里 ✓）
 	PetMood.Mood.ANGRY: "swing_offhand", # 生气：摇头（⚠️ 模型里没找到"摇头"，先拿挥手顶着，待确认）
-	PetMood.Mood.SAD: "extra1",          # 伤心：蜷缩（用户指定，静态姿势 → 循环保持，见 host._play_pose_loop）
-	PetMood.Mood.MISCHIEF: "extra7",     # 坏心眼
+	PetMood.Mood.SAD: "extra1",          # 悲伤：蜷缩（用户指定，静态姿势 → 循环保持，见 host._play_pose_loop）
 }
+## （原来还有一条 MISCHIEF → extra7。坏心眼 2026-10-07 并进"开心"了：
+##   调皮的味道留在 pet_mood.describe() 的开心那句里，不再是一个独立心情）
 
 ## 心情变了 → 播一个"能体现这个情绪"的动作（用户 2026-10-01 要求"从模型里调用其他动作"）
 func on_mood_changed(m: int) -> void:

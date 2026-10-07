@@ -23,6 +23,11 @@
 
 extends RefCounted
 
+## 日志（见 scripts/sys/pet_log.gd）。记忆出问题**必须留痕**：
+## 文件写不进去 = 她的记忆在悄悄丢，而这件事用户在界面上完全看不见
+## （只有 last_error 里一句话，没有任何人读它）
+const PetLog := preload("res://scripts/sys/pet_log.gd")
+
 ## 存盘路径。是变量不是常量：探针要指到临时文件上跑，免得把真记忆当成实验品
 var file_path: String = "user://pet_memory.json"
 ## 常规记忆超过这个数就开始按遗忘曲线清理
@@ -242,6 +247,7 @@ func load_from_disk() -> void:
 	var f := FileAccess.open(file_path, FileAccess.READ)
 	if f == null:
 		last_error = "记忆文件打不开"
+		PetLog.err("记忆", "记忆文件打不开（%s）—— 这次当成没有记忆" % file_path)
 		return
 	var raw := f.get_as_text()
 	f.close()
@@ -249,6 +255,7 @@ func load_from_disk() -> void:
 	if typeof(j) != TYPE_DICTIONARY:
 		# 文件坏了就当没有记忆 —— 宁可重新开始，也别让她说胡话
 		last_error = "记忆文件格式不对，已忽略"
+		PetLog.warn("记忆", "记忆文件格式不对（%s，%d 字节），已忽略" % [file_path, raw.length()])
 		return
 	var d := j as Dictionary
 	if typeof(d.get("profile")) == TYPE_DICTIONARY:
@@ -271,6 +278,7 @@ func save() -> void:
 	var f := FileAccess.open(file_path, FileAccess.WRITE)
 	if f == null:
 		last_error = "记忆文件写不了（%s）" % file_path
+		PetLog.err("记忆", "记忆文件写不了（%s）—— 这一轮她学到的东西会丢" % file_path)
 		return
 	f.store_string(JSON.stringify({
 		"profile": profile,

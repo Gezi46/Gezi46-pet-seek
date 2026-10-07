@@ -387,6 +387,10 @@ const PetSettings := preload("res://scripts/ui/pet_settings.gd")
 const PetHarness := preload("res://scripts/sys/pet_harness.gd")
 ## 工作台面板（派活 / 看原文 / 重启她），见 scripts/pet_workbench.gd
 const PetWorkbench := preload("res://scripts/ui/pet_workbench.gd")
+## 日志（自己落盘 + 一键导出），见 scripts/sys/pet_log.gd。
+## 为什么单独有个日志：导出版没有控制台，出问题时用户手里只有一句"它不动了" ——
+## 现场必须自己落一份文件（带级别、能轮转，不依赖项目设置）
+const PetLog := preload("res://scripts/sys/pet_log.gd")
 
 ## 设置面板里那批键 → 检查器里的变量名。
 ## **面板只认键、主脚本只认变量**，两边靠这张表对上 —— 所以"加一项设置"要动的地方
@@ -479,15 +483,16 @@ var _hover: bool = false
 var _catching: bool = false
 var _passthrough_bound: Rect2 = Rect2()    # 当前"可点区域"的包围盒，只用于死区比较
 var _passthrough_set: bool = false
-## 透明模式（点不到我）：整窗不再接鼠标 —— 点她 = 点到她后面的窗口，
-## 看不见的边界也随之消失（2026-09-30 用户要求）。开关在菜单和托盘图标里；
-## 这是运行时状态、不落盘，重启回到可点
-var _ghost_on: bool = false
-## GPU 占用率超过这个值（%）她自动"透视"自己：整窗穿透（不挡后面的游戏、不被误触）
-## + 不递候选按钮。0 = 关掉自动透视。阈值在设置面板里拖（2026-10-03 用户要求）
+## GPU 占用率超过这个值（%）她就**待在原地不动** —— 打游戏 / 跑重活的时候，
+## 她突然站起来溜达或者弹一排候选是最碍事的。0 = 关掉这个判断。
+## 阈值在设置面板里拖（2026-10-03 用户要求）
+##
+## 2026-10-05 改的：这一条原先是"自动透视"（阈值一到就把整窗设成鼠标穿透，
+## 点不到她、也不挡游戏）。**那个手感不好，连手动开关一起整块删了** ——
+## 用户报的原话是"容易沾鼠标上"。GPU 检测本身留着，改成现在这个"不动"
 @export_range(0.0, 100.0, 1.0) var gpu_threshold: float = 40.0
-## 现在是否处于"自动透视"状态（GPU 高）。穿透和候选抑制都看它
-var _gpu_passthrough: bool = false
+## 现在是不是"GPU 忙"（占用率超过阈值）。pet_walk._begin_move 和候选那几处都看它
+var _gpu_busy: bool = false
 
 var _rng := RandomNumberGenerator.new()
 var _screen: Rect2i = Rect2i()
@@ -706,6 +711,8 @@ func _enter_tree() -> void:
 ## 退出时把那个后台检测进程收掉（它自己也会在发现我们没了之后退出，双保险）
 func _exit_tree() -> void:
 	_log_exit()          # 留一行"退出"——不然日志里只有启动，答不了"到底退没退"
+	if _mood != null:
+		_mood.save()     # 情绪落盘（2026-10-07）：下次打开接着上次的心情
 	instance.release()   # 心跳收掉：下一个实例不用等它过期
 	if shell != null:
 		shell.stop()
@@ -805,6 +812,7 @@ func _ready() -> void:
 	_sync_ai_status()       # 菜单里那行"AI 服务：…"（开局探活回来后会自己刷新）
 	_sync_system_menu()     # 自启动的真实状态取自注册表，不看我们自己的开关
 	_log_startup()          # "我是怎么被启动的" —— 自启动排查全靠这行日志
+	_log_environment()      # 引擎 / 数据目录 / 哪些能力是残的（见 scripts/sys/pet_log.gd）
 
 	walk._start_idle(walk._idle_time())
 
@@ -904,6 +912,7 @@ func set_scale_percent(pct: float) -> void:
 func _quit() -> void:
 	if OS.is_debug_build():
 		print("[PetDeek] 退出")
+	PetLog.log("退出", "菜单里点的退出")
 	_close_panels()
 	_save_app_settings()
 	if shell != null:
@@ -992,10 +1001,8 @@ func _input(event: InputEvent) -> void:
 	# —— "启动即崩 + 满屏 Nil 报错"（2026-10-04 实测）
 	if pointer == null:
 		return
-	# GPU 自动透视中：鼠标事件一律不给 pointer（穿透其实已经让窗口收不到了，
-	# 这是双保险 —— 万一 flag 被别的模式顶掉，也不能让她被误触）
-	if _gpu_passthrough:
-		return
+	# （这里原先还有一道"GPU 高时鼠标事件一律不给 pointer"的守卫，2026-10-05 去掉了：
+	#   它是给整窗穿透做双保险的；穿透删了之后，再拦就只剩"她明明点得到却没反应"）
 	pointer._input(event)
 
 func _update_passthrough_region() -> void:
@@ -1009,39 +1016,29 @@ func _begin_drag() -> void:
 func _end_drag() -> void:
 	pointer._end_drag()
 
-## 透明模式（点不到我）：整窗对鼠标"透明"，点她不会选中她、也不会挡到后面的窗口。
-## 用 WINDOW_FLAG_MOUSE_PASSTHROUGH（Godot 自带，整窗穿透）—— 比抠"只留轮廓可点"
-## （mouse_passthrough_enabled 那套）干净得多，没有那层桌面提亮
-func _apply_ghost() -> void:
-	_apply_mouse_passthrough()
+# -------------------------------------------------- GPU 忙（2026-10-03，2026-10-05 改过）
 
-## 菜单 / 托盘都能切。开着时菜单里点不到了，所以托盘图标里也放了一份开关
-func _toggle_ghost() -> void:
-	_ghost_on = not _ghost_on
-	_apply_ghost()
-	_sync_menu_toggles()
-	_say("点不到我啦～（用托盘图标能切回来）" if _ghost_on else "好啦，又能点我啦")
-
-# -------------------------------------------------- 自动透视（GPU 高，2026-10-03）
-
-## 整窗穿透的最终开关：透明模式（手动）或 GPU 自动透视，任一开着就穿透。
-## 两者共用一个 WINDOW_FLAG_MOUSE_PASSTHROUGH，所以必须在这一处合并 ——
-## 否则后写的一方会把另一方顶掉
-func _apply_mouse_passthrough() -> void:
-	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_MOUSE_PASSTHROUGH,
-		_ghost_on or _gpu_passthrough)
-
-## 每帧调（只在状态翻面时才动 flag）：GPU 占用率超过阈值 → 自动透视；
-## 降回来 → 恢复。数值来自 shell.gpu_usage（辅助进程每 0.5s 刷一次）
+## 每帧调（只在状态翻面时才动手）：GPU 占用率超过阈值 → 她**待在原地不动**、
+## 也不递候选按钮；降回来 → 一切照常。数值来自 shell.gpu_usage（辅助进程每 0.5s 刷一次）
+##
+## **为什么挑 GPU 这个信号**：打游戏 / 跑重活的时候，她突然站起来溜达或者弹一排候选
+## 是最碍事的；而"GPU 占用率高"不用额外判断就知道是那种时候
+##
+## 2026-10-05 之前这里叫"自动透视"（阈值一到就把整窗设成鼠标穿透）。
+## 为什么删掉见 gpu_threshold 的声明处 —— 一句话：那个手感不好
 func _tick_gpu() -> void:
 	var want := gpu_threshold > 0.0 and shell != null \
 		and float(shell.gpu_usage) > gpu_threshold
-	if want == _gpu_passthrough:
+	if want == _gpu_busy:
 		return
-	_gpu_passthrough = want
-	_apply_mouse_passthrough()
-	if want and _quick != null:
-		_quick.hide()      # 透视时顺手把还挂着的候选收掉
+	_gpu_busy = want
+	if not want:
+		return
+	if _quick != null:
+		_quick.hide()      # 顺手把还挂着的候选收掉
+	# 正在走就**立刻收步站住**：等这一段走完再停，看着像"没生效"（一段能走好几秒）
+	if _state == State.WALK:
+		walk._start_idle(walk._idle_time())
 
 # ------------------------------------------------------------------ 菜单 / 气泡
 
@@ -1078,11 +1075,11 @@ func _on_menu_id(id: int) -> void:
 			set_home_here()
 			_say("记住这里啦～")
 		PetMenu.ID_STAY_NEARBY: _toggle_stay_nearby()
-		PetMenu.ID_GHOST: _toggle_ghost()
 		PetMenu.ID_HOME_DEFAULT:
 			set_home(PetWindow.HOME_DEFAULT)
 			_dock_to_home()
 			_say("回到右下角啦～")
+		PetMenu.ID_EXPORT_LOG: _export_logs()
 		PetMenu.ID_QUIT: _quit()
 		PetMenu.ID_RENAME: _open_rename()
 		PetMenu.ID_SETTINGS: _open_settings()
@@ -1142,7 +1139,6 @@ func _sync_menu_toggles() -> void:
 		_menu_mod.sync_talk_rate(_proactive.rate)
 		_menu_mod.sync_quick_chance(_quick_chance_index())
 		_menu_mod.sync_move_chance(_move_chance_index())
-		_menu_mod.sync_ghost(_ghost_on)
 		_menu_mod.sync_harness(harness_enabled)
 		_menu_mod.sync_stay_nearby(stay_nearby)
 
@@ -1338,7 +1334,14 @@ func _load_app_settings() -> Dictionary:
 ## 记忆的现状，显示在设置面板底下（也是"清空记忆"之后刷新的那行）。
 ## 薄壳：真正的数在 pet_memory_flow.gd 里数
 func _memory_status() -> String:
-	return _memory_flow.status() if _memory_flow != null else ""
+	var line := _memory_flow.status() if _memory_flow != null else ""
+	# 她的三维心态也挂在这一行 —— 用户要求"界面上不显示，只在设置面板里看得到"
+	# （2026-10-07）。占位形态就是 describe_short()：平常 或 "开心 60% / 生气 30% / 悲伤 10%"
+	if _mood != null:
+		if line != "":
+			line += " ｜ "
+		line += "她现在：" + _mood.describe_short()
+	return line
 
 # -------------------------------------------------- 调用本机 dsh（scripts/pet_harness.gd）
 #
@@ -1565,9 +1568,12 @@ func _restart_self() -> void:
 ##   有、且时间对得上 = 她起来了，那问题在"起来之后"（窗口没显示等）。
 ##
 ## 为什么要自己写文件、而不是 print 一份就完事：
-## **导出版里 print() 不会进引擎日志** —— 实测导出的 pet.exe 跑完，
-## `logs\godot.log` 里只有一行引擎横幅，print 的内容一个字都没有。
-## 而自启动跑的正是导出版，所以这行证据必须自己落盘（user:// 两边都可靠）。
+## **以前**（引擎的文件日志没开时）实测：导出的 exe 跑完，`logs\godot.log` 里只有一行
+## 引擎横幅，print 的内容一个字都没有；而自启动跑的正是导出版，所以这行证据只能自己落盘。
+## 2026-10-05 打开 project.godot 的 `[debug] file_logging` 之后 print 也会进那个文件了
+## （实测导出版里这一行确实出现在 godot.log 里）——**但这里的落盘照旧不动**：
+## pet_start.log 是"自启动没生效时按这个顺序查"那套排查认的文件，格式不能变；
+## 而且它不依赖任何项目设置（跑 `--script` 的探针、改过设置的工程都照写）。
 func _log_startup() -> void:
 	var stamp := Time.get_datetime_string_from_system(false, true)
 	var line := "[%s] 启动：可执行=%s｜参数=%s｜自启动=%s｜登记=%s" % [
@@ -1609,6 +1615,61 @@ func _log_line(line: String) -> void:
 	f.seek_end()
 	f.store_line(line)
 	f.close()
+
+## 启动时记一份环境。**这不是给开发看的**：她出问题时，对方机器上的一切我们都不知道
+## （引擎版本 / 数据目录 / 自启动状态），而这几样恰好是最常见的"我这儿为什么不一样"。
+## 谁会看：导出日志之后翻「系统信息.txt」的人
+func _log_environment() -> void:
+	PetLog.log("启动", "引擎 %s ｜ 数据目录 %s ｜ 自启动 %s" % [
+		Engine.get_version_info().get("string", "?"), OS.get_user_data_dir(),
+		shell.autostart_status() if shell != null else "（shell 没建起来）"])
+	for w in _log_warnings():
+		PetLog.warn("启动", w)
+
+## 开局就能一眼看出"她这会儿是不是残的"，省得后面一句一句猜。
+## 这些**都不算错**（没配 AI 后端照样能玩），所以走 WARN 不走 ERR
+func _log_warnings() -> Array:
+	var out: Array = []
+	if chat_url.strip_edges() == "":
+		out.append("没配 AI 后端地址：只会说本地台词")
+	elif chat_access_key.strip_edges() == "":
+		out.append("没配密钥：本机后端不要 key 时可以不管")
+	if shell != null and shell.last_error != "":
+		out.append("系统集成：%s" % shell.last_error)
+	return out
+
+## 「导出日志…」：把日志 + 系统信息收成一份放到桌面。
+##
+## 气泡里**只报"放桌面了"**：整条路径塞不进气泡，而且对她来说重点是"去桌面拿"，
+## 不是那串 C:\Users\…（真要看路径，资源管理器这会儿已经被打开了）
+func _export_logs() -> void:
+	var out := PetLog.export_logs(_log_info(), [chat_access_key, vision_access_key])
+	if out == "":
+		PetLog.err("日志", "导出失败：桌面和 user:// 都写不进去")
+		_say("导出没成功…要不你把 %s 整个发给我？" % OS.get_user_data_dir())
+		return
+	PetLog.log("日志", "导出到 %s" % out)
+	_say("日志收好啦，放桌面了～")
+	OS.shell_show_in_file_manager(out)
+
+## 导出时列进「她那边的设置」那一节。
+##
+## ⚠️ **写进这里的东西是要发给别人的**：所以只放"有没有配密钥"，
+## **永远不放密钥本身**（pet_log 那边还会再隐去一遍，两道）。
+## 地址和模型名不敏感（本机后端的地址就是 127.0.0.1），而排查"她为什么不理人"时
+## 这两个恰好最有用
+func _log_info() -> Dictionary:
+	return {
+		"AI 后端": chat_url,
+		"对话模型": chat_model,
+		"看图模型": vision_model,
+		"密钥": "已配置" if chat_access_key.strip_edges() != "" else "未配置",
+		"主动说话": "开" if _proactive_on else "关",
+		"偷看屏幕": "开" if _peek_on else "关",
+		"看摄像头": "开" if _camera_on else "关",
+		"窗口缩放": "%d%%" % int(round(_scale_pct * 100.0)),
+		"她现在的状态": State.keys()[_state] if _state >= 0 and _state < State.size() else "?",
+	}
 
 func _sync_system_menu() -> void:
 	if shell == null:
@@ -1844,7 +1905,13 @@ func _on_chat_submitted(text: String) -> void:
 	_submit_chat(text)
 
 ## 送出一句话（实现在 pet_chat_panel.gd）
+##
+## 顺手把这句话交给情绪模块过一眼 —— 那是"观察主人的生活健不健康、开不开心"的输入之一
+## （2026-10-07 用户要求：悲伤靠观察主人自主积攒）。主人打出来的字比截图更直接，
+## 命中表在 pet_mood.UNHEALTHY_WORDS，加多少也在那头
 func _submit_chat(text: String) -> void:
+	if _mood != null:
+		_mood.say_about_master(text)
 	_chat_panel_mod.submit(text)
 
 ## 流式冒字的起手式：清空气泡、掐掉旧的淡出 tween。
@@ -2162,6 +2229,9 @@ func _send_first(prompt: String, shot: String = "") -> bool:
 func _setup_mood() -> void:
 	_mood = PetMood.new()
 	_mood.setup(self)
+	# 情绪落盘（2026-10-07 用户要求）：关掉再打开她还记得上次的心情。
+	# 读回来时"上次气得很厉害"会大部分转成悲伤（委屈）—— 见 pet_mood.load()
+	_mood.load()
 	# 情绪模块的信号接回 _mood_ui（它只发信号，开口/选择框那摊在 pet_mood_ui.gd）
 	_mood_ui.setup(self)
 	# 心情变了 → 播一个"能体现这个情绪的动作"（2026-10-01）
@@ -2296,6 +2366,9 @@ func _load_chat_config() -> void:
 	_camera_on = camera_look_enabled
 	var cfg := ConfigFile.new()
 	if cfg.load(CHAT_CONFIG) != OK:
+		# "没配过"是正常的（第一次跑）——**有文件却读不了**才值得记一笔
+		if FileAccess.file_exists(CHAT_CONFIG):
+			PetLog.err("设置", "pet_chat.cfg 读不了，这一轮退回默认设置")
 		return
 	_proactive_on = bool(cfg.get_value("chat", "proactive", proactive_enabled))
 	_proactive.set_rate(clampi(int(cfg.get_value("chat", "talk_rate", _proactive.rate)), 0, 3))

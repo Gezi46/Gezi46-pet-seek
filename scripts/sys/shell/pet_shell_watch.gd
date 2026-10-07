@@ -179,10 +179,6 @@ func _poll_command() -> void:
 	match cmd:
 		"toggle":
 			toggle_visible()
-		"ghost":
-			# 托盘里的「透明模式」：开着时整窗点不到，只能靠托盘切回来
-			if _host.pet != null:
-				_host.pet.call("_toggle_ghost")
 		"quit":
 			if _host.pet != null and _host.pet.is_inside_tree():
 				_host.pet.get_tree().quit()

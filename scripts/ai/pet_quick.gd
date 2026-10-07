@@ -225,9 +225,9 @@ func tick() -> void:
 func after_reply(kind: String, line: String, context: String = "") -> bool:
 	if _host == null or _box == null:
 		return false
-	# GPU 自动透视中（打游戏）：不递候选。宿主那层也拦了，这是第二道 ——
+	# GPU 忙（打游戏 / 跑重活）：不递候选。宿主那层也拦了，这是第二道 ——
 	# 以后新加一条"她说完了"的路子，忘了在宿主加判断也不会漏出按钮
-	if bool(_host._gpu_passthrough):
+	if bool(_host._gpu_busy):
 		return false
 	if not bool(_host.quick_enabled) or not _bubble.is_visible():
 		return false
@@ -256,8 +256,8 @@ func after_reply(kind: String, line: String, context: String = "") -> bool:
 ## 洗不出候选（模型没照格式写 / 只有一条）就**退回 after_reply** ——
 ## 那条会先摆本地那组，再决定要不要问模型。按钮在任何情况下都不会消失
 func show_given(kind: String, line: String, opts: Array) -> bool:
-	if _host != null and bool(_host._gpu_passthrough):
-		return false       # GPU 自动透视中（打游戏）：候选跟着那句话一起给的也别摆
+	if _host != null and bool(_host._gpu_busy):
+		return false       # GPU 忙（打游戏）：候选跟着那句话一起给的也别摆
 	var clean: Array[String] = []
 	for v in opts:
 		var s := String(v).strip_edges()

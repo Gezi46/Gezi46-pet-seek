@@ -473,9 +473,6 @@ elseif ($Mode -eq 'watch') {
   $menu = New-Object Windows.Forms.ContextMenuStrip
   $miShow = $menu.Items.Add($lblShow)
   $miShow.Add_Click({ try { [IO.File]::WriteAllText($script:cmdFile, 'toggle') } catch { } })
-  $lblGhost = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('6YCP5piO5qih5byP'))
-  $miGhost = $menu.Items.Add($lblGhost)
-  $miGhost.Add_Click({ try { [IO.File]::WriteAllText($script:cmdFile, 'ghost') } catch { } })
   $miQuit = $menu.Items.Add($lblQuit)
   $miQuit.Add_Click({ try { [IO.File]::WriteAllText($script:cmdFile, 'quit') } catch { } })
   $ni.ContextMenuStrip = $menu
