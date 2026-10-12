@@ -133,6 +133,20 @@ func set_fullscreen_aware(on: bool) -> void:
 func set_tray_icon(on: bool) -> void:
 	_watch.set_tray_icon(on)
 
+## 托盘那一行小提示（2026-10-12 用户要的"小图标上写着本地模型运行中" ✓）。
+## 做法：写进 `<状态文件>.tip`（内容是 **base64** ✓ —— 免得非 ASCII 在 PowerShell 那边出岔子 ✓，
+## 那边的教训见 pet_shell_ps1.gd 的 tray 段 ✓），辅助进程每 800ms 读一次、变了才动 $ni.Text ✓。
+## 传空串 = 回到默认那句（"PetDeek（双击图标）" ✓）
+func set_tray_text(text: String) -> void:
+	var f := FileAccess.open(ProjectSettings.globalize_path(ShellWatch.STATE_FILE) + ".tip",
+		FileAccess.WRITE)
+	if f == null:
+		if OS.is_debug_build():
+			print("[PetDeek] 托盘提示写不进去（%s.tip）" % ShellWatch.STATE_FILE)
+		return
+	f.store_string(Marshalls.utf8_to_base64(text))
+	f.close()
+
 ## 拉起那个后台辅助进程（PowerShell 小循环，800ms 转一圈 —— 理由见 pet_shell_watch.gd）
 func start_watcher() -> void:
 	_watch.start()

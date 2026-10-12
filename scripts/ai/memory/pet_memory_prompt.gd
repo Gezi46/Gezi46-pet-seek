@@ -155,9 +155,8 @@ AI（她）：%s
 0. 这条事实要留很久，所以下面两件事必须做到：
    ① **不要写"今天""昨天""前天""前几天"这类相对时间** —— 一律照上面的日期换算成
       具体某一天（写着"今天"过几天就会被读成"昨天"）；
-   ② **也别写成"他现在正在做什么"的口气** —— 记的是**那会儿**的事：写
-      "9 月 26 日主人在挑壁纸"，**不要**写"主人正在挑壁纸"
-      （过几小时她自己会把后者当成"主人此刻在做的事"，然后主动搭话时说得驴唇不对马嘴）
+   ② **也别写成"他现在正在做什么"的口气** —— 记的是**那会儿**的事，不是此刻的直播。
+      正在做什么的那种句子，过几小时会被当成"主人现在在做的事"，她主动搭话就驴唇不对马嘴
 1. 只能提取用户**明确说出**的事实，禁止任何推测或引申
 2. 如果用户没有表达任何值得记住的信息，返回 []
 3. 禁止把 AI 的建议当成用户的事（除非用户明确表示采纳）
@@ -167,7 +166,9 @@ AI（她）：%s
 值得提取的：用户的情感状态、具体事件、人际关系、偏好（喜欢/讨厌什么）、担忧困扰。
 **不要**提取"他此刻正在做什么"这种一时的事（"他在挑壁纸""他在看文档"）——
 它第二天就过期，而她会一直照着它说，听上去像在说现在（见 OBSERVE_PROMPT 第 5 条）。
-每条写成完整的陈述句，主语用"主人"，例如：["主人 9 月 26 日加班到很晚，很累"]。
+每条写成完整的陈述句，主语用"主人"，照这个**形状**写（尖括号只是占位符，**别照抄**，
+要换成真事 —— 照抄这行的会被当成垃圾丢掉）：
+["主人 <哪一天> <明确发生的事>"]
 
 只返回 JSON 数组，不要任何解释："""
 
@@ -176,7 +177,14 @@ AI（她）：%s
 ## 「主人 9 月 27 日在赶一个活儿，好像很赶」就这么进了长期记忆，重要度还排最前，
 ## 之后她每轮都检索到它，满嘴都是例句里的"挑壁纸/赶活"（用户报的"聊东聊西"就是它）。
 ## 治法不赌提示词：抽出来的句子和示例句高度重合（归一化后互为包含）就在存档层扔掉。
-## ⚠️ 改上面提示词的示例文案时，**必须同步这份清单**
+##
+## ⚠️ 2026-10-12（用户要求"本地档向线上 API 档看齐"）：上面那两条**具体例句已经删掉** ✗ ——
+##   实测（用生产提示词直接问 8531 的 0.8B）它会**照抄例句、真事实一条不抽** ✓：
+##   喂「我叫阿哲，在深圳做程序员，今天加班到十一点累死了」，它回
+##   ["主人 9 月 26 日主人在挑壁纸", "主人 9 月 26 日加班到很晚，很累"] —— 两句全是例句 ✓，
+##   守卫全拦 → 存下 0 条 ✓（她也就不再学新东西了 ✓）。
+##   示例现在换成**带尖括号的形状模板** ✓：抄了也一眼是垃圾 ✓（结构检查见 is_example_copy ✓）。
+##   下面这份清单**留着当历史兜底** ✓：老模型的习惯、以及已经被收进记忆的老句子仍认得出 ✓
 const EXAMPLE_LINES: Array[String] = [
 	"主人 9 月 26 日加班到很晚，很累",
 	"9 月 26 日主人在挑壁纸",
@@ -207,6 +215,11 @@ static func _norm_line(s: String) -> String:
 ## 和示例句高度重合 = 十有八九是小模型在抄示例，不是真提取结果。
 ## 互为包含 + 短边 ≥8 字：太短的判不了（"主人在忙"谁都像），宁放过不误杀
 static func is_example_copy(text: String) -> bool:
+	# ⚠️ 结构检查先来（2026-10-12）：提示词里的示例现在写成**形状模板**
+	#    `["主人 <哪一天> <明确发生的事>"]` ✓ —— 小模型照抄时尖括号一定还在 ✓，
+	#    这是"它在抄格式、没在抽事实"的**铁证** ✓（归一化去不掉 < > ✓），直接判垃圾 ✓
+	if text.find("<") >= 0 or text.find(">") >= 0:
+		return true
 	var t := _norm_line(text)
 	if t.length() < 8:
 		return false
@@ -314,10 +327,71 @@ static func parse_json_quiet(text: String) -> Variant:
 	return j.data
 
 ## 从模型返回的文本里抠出 JSON 数组（模型经常裹一层 ```json）
+## ⚠️ 只留**字符串**元素（2026-10-12）：小模型有时吐 `[{"date": "..."}]` 这种对象数组 ✓，
+## 上层 `apply_extracted_facts` 是 `String(f)` ✗ → 直接抛 "Invalid call 'String' constructor" ✓，
+## 整条记忆任务半路炸掉 ✓（探针用生产提示词问 8531 时原样撞上 ✓，原始返回是
+## `[{"date": "2026 年 10 月 12 日（周一）"}]` ✓）。这儿筛干净，上层拿到的永远是字符串 ✓。
+## 对象里带 text/fact/content/内容 字段的顺手拆出来 ✓（有些模型爱包一层，拆出来正好是它想说的那句 ✓），
+## 其余（数字 / 嵌套对象 / null）一律丢 ✓ —— **宁少勿滥**，和云端档的行为一致 ✓
 static func parse_json_array(text: String) -> Array:
 	var t := _strip_fence(text)
 	var j: Variant = parse_json_quiet(t)
-	return j if typeof(j) == TYPE_ARRAY else []
+	if typeof(j) != TYPE_ARRAY:
+		# ⚠️ 兜底再兜一层（2026-10-12，2B 实测）：它会吐**坏 JSON** ✗ ——
+		#    `[{"主人 2026年10月12日 阿哲在深圳做程序员"}]`（对象只有键、没有冒号 ✓），
+		#    严格解析必然 null ✓，可那句其实是**好事实** ✓ → 从原文里把成句的引号串抠出来 ✓。
+		#    ⚠️ **只在"看起来是 JSON 数组、但坏在细节上"时才抢救** ✗，门槛**看原文** ✓：
+		#    `_strip_fence` 对"数组解析不动、但它长得像数组"的输入会**退回抠对象** ✗ ——
+		#    实测 `[{"主人 2026年10月12日 阿哲在深圳做程序员"}]`（对象只有键、没冒号 ✓）
+		#    被它抠成 `{"主人 …"}` ✓ → 门槛落空 ✓ → 那句好事实整条丢掉 ✓（2B 实测就是这个 ✓）。
+		#    看原文就没事：原文确实是数组形状 → 抢救 ✓；大白话（快速回答那条要靠它返回空 ✓）
+		#    既不以 [ 开头、抠出来也不是数组 ✓ → 照样不抢救 ✓
+		var head := text.strip_edges()
+		if not (head.begins_with("[") or t.begins_with("[")):
+			return []
+		var salvaged: Array = []
+		for seg in head.split("\""):
+			var picked := seg.strip_edges()
+			if picked.length() >= 8 and not picked.contains("{") and not picked.contains("}"):
+				salvaged.append(picked)
+		return salvaged
+	var out: Array = []
+	for e in Array(j):
+		if typeof(e) == TYPE_STRING:
+			var s2 := String(e).strip_edges()
+			if s2 != "":
+				out.append(s2)
+		elif typeof(e) == TYPE_ARRAY:
+			# ⚠️ 小模型爱多包一层 ✗（2B 实测吐过 `[["事实一","事实二","事实三"]]` ✓）——
+			#    往里看一层 ✓，字符串就收下 ✓；更深的嵌套不管 ✓（那已经是它在瞎编结构了 ✓）
+			for inner in Array(e):
+				if typeof(inner) == TYPE_STRING:
+					var s3 := String(inner).strip_edges()
+					if s3 != "":
+						out.append(s3)
+		elif typeof(e) == TYPE_DICTIONARY:
+			# ⚠️ 小模型爱把一句话包成对象 ✓，而**键名它随手写** ✗ —— 2026-10-12 实测 0.8B 写过
+			#    `{"主人": "…煎牛排糊了，妈妈笑…"}` ✗：原来只认 text/fact/内容 那几个键 ✓，
+			#    于是**整句被丢掉** ✓（对照时"用例3 能存 0 条"就是它 ✗，线上档同一句能存 3 条 ✓）。
+			#    现在的规矩：① 先认常见键 ✓；② 认不出来就看**是不是只有一个字符串值** ✓ ——
+			#    是就取它 ✓（只装一个字符串的对象，那句话就是它想说的事实 ✓）；③ 其余丢 ✓
+			var picked := ""
+			for k in ["text", "fact", "content", "内容", "事实"]:
+				if Dictionary(e).has(k) and typeof(Dictionary(e)[k]) == TYPE_STRING:
+					picked = String(Dictionary(e)[k]).strip_edges()
+					break
+			if picked == "":
+				var only := ""
+				var n_str := 0
+				for kk in Dictionary(e).keys():
+					if typeof(Dictionary(e)[kk]) == TYPE_STRING:
+						n_str += 1
+						only = String(Dictionary(e)[kk]).strip_edges()
+				if n_str == 1:
+					picked = only
+			if picked != "":
+				out.append(picked)
+	return out
 
 static func parse_json_object(text: String) -> Dictionary:
 	var t := _strip_fence(text)

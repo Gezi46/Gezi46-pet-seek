@@ -134,10 +134,21 @@ var _w_tls := false
 var _w_base := ""
 var _worker := Once.new()
 
+## 工位"最近失败过"的冷却（毫秒 ✓）。⚠️ 2026-10-12（用户要求"本地档向线上 API 档看齐"）：
+## 老代码**配了工位就无条件发 8531** ✗ —— 那边窗口一关（或只手起了主力模型 ✓），
+## 记忆/摘要/候选全部发向死端口 ✓，而界面上 AI 状态还亮着"连着" ✓（探活探的是主后端 ✗），
+## 用户只会觉得"她好像变笨了、什么都没记住" ✓。
+## 现在的规矩**和云端档完全对齐** ✓：工位刚失败过 → 这一批就先当它不存在 ✓，
+## 活回落到聊天后端 ✓（云端档本来就没有工位 ✓，走的就是这条路 ✓）；
+## 冷却过后自动再试 ✓ —— 0.8B 那个窗口重新起来，下一轮就恢复分工 ✓
+const WORKER_COOL_MS := 120000
+var _worker_cool_until_ms := 0
+
 ## 配工位。url 空 = 不分工（ask_once 继续走聊天后端）
 func configure_worker(p_url: String, p_model: String) -> void:
 	worker_url = p_url.strip_edges()
 	worker_model = p_model.strip_edges()
+	_worker_cool_until_ms = 0        # 重新配过 = 全新开始试 ✓（别被上一次的冷却卡住 ✓）
 	if worker_url == "":
 		_w_host = ""
 		_w_port = 0
@@ -150,17 +161,18 @@ func configure_worker(p_url: String, p_model: String) -> void:
 	_w_tls = bool(u["tls"])
 	_w_base = String(u["base_path"])
 
-## 工位是否已配置（ask_once 分流看它）
+## 工位**现在**能不能用（ask_once 分流看它）。冷却期里当它不存在 ✓ —— 见 WORKER_COOL_MS
 func has_worker() -> bool:
-	return _w_host != ""
+	return _w_host != "" and Time.get_ticks_msec() >= _worker_cool_until_ms
 
 func _init() -> void:
 	_bg.got.connect(_on_bg_got)
 	_bg.failed.connect(_on_bg_failed)
-	# 工位那条共用同一组收尾处理：ask_once 一次只发一边（发送前查过两边的 busy），
+	# 工位那条共用收尾处理：ask_once 一次只发一边（发送前查过两边的 busy），
 	# 不会出现两条同时回来互相认领的情况
+	# ⚠️ 但**失败**要单独接 ✗：工位挂了得给它一段冷却 ✓，不能和主后端混在一起算 ✓
 	_worker.got.connect(_on_bg_got)
-	_worker.failed.connect(_on_bg_failed)
+	_worker.failed.connect(_on_worker_failed)
 	# 探活那块的"可达值变了"转成自己的 reachable 信号 —— **对外接口一个字不变**
 	# （漏了这一句的话：探活照样跑、backend_reachable() 也对，但宿主的托盘 / 菜单那行
 	#   "AI 服务：联系不上"永远不刷新。probe_offline 就是专门抓这个的，实测抓到过）
@@ -382,7 +394,9 @@ func ask_once(system: String, user: String, max_tokens: int = 2000) -> bool:
 	# 配了工位就走它：记忆/日记这类后台活分给小模型（便宜快、不占聊天的算力），
 	# 聊天模型只管对话和撑人设。工位那条**不参与 429 重发**——本机后端没有 429，
 	# 云端用户根本不配工位，所以原来的重发记账只留在聊天后端那条路上
-	var use_worker := _w_host != ""
+	# ⚠️ 判据用 has_worker() 而不是 `_w_host != ""` ✗（2026-10-12，见 WORKER_COOL_MS）：
+	#    工位刚失败过 → 这一批回落到聊天后端 ✓，和云端档（本来就没工位）走同一条路 ✓
+	var use_worker := has_worker()
 	var host := _w_host if use_worker else _host
 	var port := _w_port if use_worker else _port
 	var tls := _w_tls if use_worker else _tls
@@ -426,6 +440,15 @@ func _on_bg_failed(msg: String) -> void:
 	# 表现只是"她好像没记住"。这里不落一份，就永远查不到
 	PetLog.warn("聊天", "后台请求失败：%s" % msg)
 	once_failed.emit(msg)
+
+## 工位（记忆/摘要/候选那条）失败：除了记一笔，还得**给它一段冷却** ✓ ——
+## 冷却里 has_worker() 返回 false ✓，这批活自动回落到聊天后端 ✓（= 云端档的行为 ✓）。
+## 2026-10-12 补：在那之前工位一死，记忆就静默全失败 ✓（只有一行 warn，界面毫无反应 ✓）
+func _on_worker_failed(msg: String) -> void:
+	_worker_cool_until_ms = Time.get_ticks_msec() + WORKER_COOL_MS
+	PetLog.warn("聊天", "工位不可达 —— 记忆/摘要先回落到聊天后端，%d 秒后再试：%s" % [
+		int(WORKER_COOL_MS / 1000), msg])
+	_on_bg_failed(msg)
 
 # ------------------------------------------------------------------ 流式解析
 

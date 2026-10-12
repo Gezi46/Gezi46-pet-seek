@@ -2132,17 +2132,41 @@ func _open_ai_settings() -> void:
 func _on_ai_panel_closed() -> void:
 	_set_chat_focus(false)
 
+## ⚠️ "空密钥**连按两次**才真清"的那一步（2026-10-12："换模型 apikey 丢失" ✓）。
+## 空 key **不等于**要删 key ✗：面板切到不要鉴权的本地后端时，密钥栏天然是空的 ✓，
+## 老代码照单全收 ✗ → 空串一路走到 `_save_chat_config` → `PetSecret.store("", "")`
+## 会把 `user://pet_secret.dat` **整个删掉** ✗✗ —— 再换回官方 API，那把付费 key
+## 已经不在机器上了 ✓（用户看到的就是"丢了" ✓）。
+## 现在：第一次空着保存 → 原来的 key **留着** + 跟主人说一句 ✓；连着第二次 → 才真清 ✓
+var _key_clear_pending := false
+
 func _on_ai_settings_saved(d: Dictionary) -> void:
 	chat_url = String(d.get("url", chat_url))
-	chat_access_key = String(d.get("key", chat_access_key))
+	var typed := String(d.get("key", chat_access_key)).strip_edges()
+	if typed != "":
+		chat_access_key = typed
+		_key_clear_pending = false
+	elif chat_access_key.strip_edges() == "":
+		_key_clear_pending = false      # 本来就没配过 ✓ 没什么可清的 ✓
+	elif _key_clear_pending:
+		chat_access_key = ""            # 说第二遍了 = 真不要了 ✓
+		_key_clear_pending = false
+		_say("那把密钥我清掉了 ✓")
+	else:
+		_key_clear_pending = true
+		_say("密钥栏是空的 —— 你原来那把 key 我先留着 ✓；真想清掉就再按一次保存 ✓")
 	chat_model = String(d.get("model", chat_model))
 	vision_url = String(d.get("vision_url", vision_url))
 	vision_model = String(d.get("vision_model", vision_model))
 	# 选的是本地小模型：后台杂活（记忆/日记）顺手分工给第二实例的 0.8B（CPU 跑，
 	# 不占聊天那份显存）；切回云端档就不分工（worker 空 = 跟聊天同一个后端）
-	if chat_url.contains(LOCAL_AI_MARK):
+	var to_local := chat_url.contains(LOCAL_AI_MARK)
+	if to_local:
 		worker_url = "http://127.0.0.1:8531/v1"
-		worker_model = "qwen3.5-0.8b"
+		# 2026-10-12：工位从 0.8B 换成 **Qwen3.5-2B**（同一家族 ✓ 启动器里的 AUX 同步改了 ✓）。
+		# 实测（拿生产记忆提示词跑三组用例 ✓）：0.8B = 1 / 0 / 2 条（还抄提示词例句 ✗），
+		# 2B = 1 / 0 / 3 条、措辞干净、CPU 上快 5-10 倍 ✓（对照组见 local_ai 那份报告 ✓）
+		worker_model = "qwen3.5-2b"
 	else:
 		worker_url = ""
 		worker_model = ""
@@ -2152,9 +2176,14 @@ func _on_ai_settings_saved(d: Dictionary) -> void:
 	else:
 		_apply_chat_config()
 	_say("AI：%s" % chat_model)
-	# 选的是本地小模型但探活还没绿 → 后台把 llama-server 拉起来（提示见下个函数）
-	if chat_url.contains(LOCAL_AI_MARK):
+	if to_local:
+		# 切到本地：后台把它叫起来（加载 GGUF 要十几秒 ✓ —— 这期间她说"正在启动" ✓、
+		# 菜单那行也写"启动中" ✓，见 _ensure_local_ai_started / sync_ai_status ✓）
 		_ensure_local_ai_started()
+	else:
+		# 切回云端：**把本地那套关掉**（2026-10-12 用户要的 ✓）—— 别白占内存/显存，
+		# 也让"本地在跑"这个状态干净 ✓
+		_stop_local_ai()
 
 ## 本地小模型（llama.cpp）的约定：端口 8530；启动器在 d:\dsh\local_ai\（StartLocalAI.bat）。
 ## 它会起一个**最小化**的命令框跑 llama-server（想停就关那个框），
@@ -2194,15 +2223,44 @@ func _ensure_local_ai_started() -> void:
 	while Time.get_ticks_msec() < deadline:
 		if _chat.backend_reachable():
 			_local_launching = false
+			_local_launched = true
+			_set_local_tray(true)      # 托盘那个小图标上写"本地模型运行中" ✓（用户要的 ✓）
+			_sync_ai_status()          # 菜单那行从"启动中"换成"运行中" ✓
 			_say("本地小模型连上啦～")
 			return
 		# 模型加载要十几秒；干等定时探活会慢一拍，每 3 秒主动探一次
 		if Time.get_ticks_msec() >= next_probe:
 			_chat.probe_now()
 			next_probe = Time.get_ticks_msec() + 3000
+		# 等它起来的这段里，让菜单那行一直看得见"启动中" ✓（探活一变绿上面就换了 ✓）
+		_sync_ai_status()
 		await get_tree().process_frame
 	_local_launching = false
+	_set_local_tray(false)
+	_sync_ai_status()
 	_say("本地模型好像没起来，帮我看看 D:\\dsh\\local_ai\\server.log？")
+
+## 本地那套现在算"在跑"吗（她自己起的 ✓）。状态行 / 托盘 / 自动关闭都用它
+var _local_launched := false
+
+## 切回云端时把本地那套**关掉**（2026-10-12 用户要的"切回去自动关闭" ✓）。
+## 用 taskkill 按进程名关：只会命中 llama-server.exe（桌宠自己不是这名字 ✓），
+## 手工另起的实例也一起关 ✓ —— 那正是"我不用本地了"的意图 ✓（想再用就重开启动器 ✓）。
+## 关之前先说一句：她得有反馈 ✓，不然"这句设置到底生效没"没法判断 ✓
+func _stop_local_ai() -> void:
+	if _local_launched:
+		_say("本地模型我先关掉啦（省显存）…")
+	_local_launched = false
+	_set_local_tray(false)
+	OS.create_process("taskkill", PackedStringArray(["/IM", "llama-server.exe", "/F"]))
+	_sync_ai_status()
+
+## 托盘那行小提示（用户要的"只留一个小图标，写着本地模型运行中" ✓）。
+## 托盘开关关着就不写 ✓ —— 写进文件也没人读，那个辅助进程根本没起来 ✓
+func _set_local_tray(on: bool) -> void:
+	if shell == null or not shell.tray_icon:
+		return
+	shell.set_tray_text("本地模型运行中" if on else "")
 
 ## 菜单 →「重新连接 AI 服务」：不重建客户端，按当前设置重连并探活
 func _reconnect_ai() -> void:

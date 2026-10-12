@@ -946,8 +946,15 @@ static func is_backchannel(s: String) -> bool:
 	var t := s.strip_edges()
 	if t.length() > 10:
 		return false
-	return t.ends_with("？") or t.ends_with("?") or t.ends_with("呢") \
-		or t.ends_with("吗") or t.ends_with("吧") or t.ends_with("啊")
+	# ⚠️ 补齐漏网的收尾字（2026-10-12 实测）：working 里躺着「不喝了」和「那我先去刷会儿呗」✗——
+	#   老清单只认 ？/呢/吗/吧/啊 ✓，"了""呗"这类**接话尾巴**全漏 ✓，而它们每轮都进上下文 ✓，
+	#   她就围着这两句鬼影话题说话 ✓（报告里"鬼影话题"的复发 ✓，见 probe 实测 ✓）。
+	#   真话题很少用这些字收尾（挑壁纸 / 打游戏 / 加班 / 面试 ✓），误杀面很小，宁缺勿滥 ✓
+	for tail in ["？", "?", "呢", "吗", "吧", "啊", "了", "呗", "嘛", "呀", "哦", "噢",
+			"哈", "啦", "咯", "诶", "唉", "哎", "唔", "嗯"]:
+		if t.ends_with(tail):
+			return true
+	return false
 
 func _topic_of(user_text: String) -> String:
 	var t := user_text.strip_edges().replace("\n", " ")
@@ -1023,6 +1030,8 @@ func apply_extracted_facts(facts: Array) -> int:
 			continue                       # 禁掉"AI对用户的建议"，见 FACT_PROMPT 第 3 条
 		if MemPrompt.is_example_copy(s):
 			continue                       # 小模型抄提示词例句的假事实，见 EXAMPLE_LINES 注释
+		if _looks_date_only(s):
+			continue                       # "只有日期、没有事"的也算垃圾，见下面那条注释
 		var out := MemOrganize.merge_into(self, _tidy_sentence(s), 0.1, KIND_FACT)
 		if out != MemOrganize.OUT_SKIPPED:
 			n += 1
@@ -1030,11 +1039,58 @@ func apply_extracted_facts(facts: Array) -> int:
 		save()
 	return n
 
-func _tidy_sentence(s: String) -> String:
+## 小模型抽回来的句子先"洗一遍" —— 2026-10-12 拿**线上档做对照**量出来的差距 ✓：
+##   线上（deepseek）：「主人于2026年10月12日加班到晚上十一点，当时还没吃晚饭」✓
+##   本地（0.8B）：「主人 2026 年 10 月 12 日 **星期一** **用户说**今天加班到十一点累死了…」✗
+## 同一件事，就差这几个噪声词 ✓ —— 可它们会跟着记忆每轮被检索到 ✓，她回话就带上"用户说"
+## "星期一"这种腔 ✓（线上档从来不这么写 ✓）。洗的边界**故意很窄** ✗：
+##   ① 只去转述词（用户说 / 她说 / 主人说…）和星期几 ✓；
+##   ② "今天/昨天"只在**句子已经有年月日**时才去 ✓ —— 否则会把它唯一的时间线索也洗没 ✓
+## static：探针能拿它离线验"洗完长什么样" ✓（它本来就不碰任何成员 ✓，见本仓惯例 ✓）
+static func _tidy_sentence(s: String) -> String:
 	var t := s.strip_edges()
+	for w in ["用户说", "主人说", "她说", "用户表示", "主人表示", "主人在说"]:
+		t = t.replace(w, "")
+	# ⚠️ 裸的"用户"也归成"主人" ✓（2026-10-12 对照里 0.8B 写"妈妈笑**用户**"✗ ——
+	#   而 FACT_PROMPT 明文要求主语用"主人" ✓、线上档也照做 ✓）。改完这句，
+	#   "用户煎牛排糊了"就长成了线上那句"主人…煎牛排糊了"的形状 ✓
+	t = t.replace("用户", "主人")
+	for w in ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日", "星期天",
+			"周一", "周二", "周三", "周四", "周五", "周六", "周日", "周天"]:
+		t = t.replace(w, "")
+	t = t.replace("（）", "").replace("()", "").strip_edges()
+	if t.find("年") >= 0 and (t.find("日") >= 0 or t.find("号") >= 0):
+		for w in ["今天", "昨天", "前天", "今日", "昨日"]:
+			t = t.replace(w, "")
+	while t.find("  ") >= 0:
+		t = t.replace("  ", " ")
+	t = t.strip_edges()
 	if t.length() > 60:
 		t = t.substr(0, 60)
 	return t
+
+## "其实什么都没说"的句子 —— 小模型会把它当"事实"交上来 ✗。两类（2026-10-12 实测）：
+##   ① **只有日期、没有事**：0.8B 吐过 `{"主人": "今天 2026 年 10 月 12 日（周一）"}` ✓
+##      判法：把 年月日 / 星期几 / 数字 / 标点 / 空格全抠掉，剩下**中文字不足 4 个** ✓
+##   ② **寒暄**：2B 吐过「主人 2026 年 10 月 12 日 早上 10 点 10 分 **说嗯**」✗
+##      —— FACT_PROMPT 第 5 条明写"寒暄不要" ✓，判法：句子里"说了什么"那半句是接话词 ✓
+## 真事实过得了这道门（"主人喜欢冰美式" ✓、"主人 9 月 27 日在敲键盘" ✓、
+## 线上那句"…加班到晚上十一点，当时还没吃晚饭" ✓ 都留 6 个以上中文字 ✓）
+static func _looks_date_only(s: String) -> bool:
+	var flat := s.replace(" ", "")
+	for w in ["说嗯", "说哦", "说啊", "说哈", "说好的", "说是的", "说好吧", "说在吗", "说谢谢"]:
+		if flat.find(w) >= 0:
+			return true
+	var t := s
+	for w in ["年", "月", "日", "号", "星期", "周", "上午", "下午", "晚上", "凌晨",
+			"今天", "昨天", "前天", "今日", "昨日"]:
+		t = t.replace(w, "")
+	var han := 0
+	for ch in t:
+		var c := ch.unicode_at(0)
+		if c >= 0x4E00 and c <= 0x9FFF:
+			han += 1
+	return han < 4
 
 # ================================================================
 # 内部类看不到外层作用域，所以凡是要算保留率的地方都得由外层代劳

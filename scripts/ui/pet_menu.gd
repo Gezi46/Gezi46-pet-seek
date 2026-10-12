@@ -566,9 +566,15 @@ func _on_provider_picked(idx: int) -> void:
 	_url_edit.text = String(p["url"])
 	_model_edit.text = String(p["model"])
 	_vision_edit.text = String(p["vision"])
-	# 本地那档顺手清掉密钥栏（服务不要鉴权，留着旧 key 只会误导人）
-	if p.has("key"):
-		_key_edit.text = String(p["key"])
+	# ⚠️ **绝不动密钥栏** ✗ —— "换模型 apikey 就没了"这条 bug 的根就在下面这三行 ✓：
+	#   老代码在"本地那档"里顺手把密钥栏清成预设里的 "" ✗（那一档确实不要鉴权 ✓，本意是别误导人 ✓）——
+	#   可密钥栏**不是随手可丢的草稿** ✗：一按保存，那个空串就走 `_on_save` →
+	#   `_on_ai_settings_saved` → `PetSecret.store("", "")` ✗，而它会**把整个 pet_secret.dat 删掉** ✗✗。
+	#   于是"切一下本地档、再切回官方 API" = 付费 key 从机器上消失 ✓（用户看到的就是"丢了" ✓）。
+	#   现在的规矩：来源下拉**只填地址和模型** ✓，密钥栏原样留着 ✓（换回去直接能用 ✓）；
+	#   真想清掉那把 key：把栏位清空**连按两次保存** ✓（第一下只是提醒 ✓，见 desktop_pet.gd）
+	if p.has("key") and _key_edit != null and _key_edit.text.strip_edges() != "":
+		_status.text = "这一档不校验密钥 —— 你那把 key 我给你留在栏里了，换回官方 API 直接能用 ✓"
 
 ## 面板打开时填当前值。status 用来把"连不上/令牌过期"这类原因直接写给人看
 func open_ai_panel(status: String = "") -> void:

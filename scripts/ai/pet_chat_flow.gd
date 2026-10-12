@@ -224,6 +224,15 @@ func sync_ai_status() -> void:
 	if not _host.chat_enabled:
 		_host._menu_mod.set_ai_status("聊天总开关关着")
 	elif offline():
-		_host._menu_mod.set_ai_status("联系不上（她先只做基础动作）")
+		# ⚠️ "本地档正在起" 和 "真联系不上" 是两回事 ✗（2026-10-12 用户要状态可见 ✓）：
+		#    启动本地模型要加载 GGUF、十几秒起步 ✓，这期间该显示"启动中"而不是"断了" ✓
+		if _host._local_launching:
+			_host._menu_mod.set_ai_status("本地模型启动中…（十几秒，别急）")
+		else:
+			_host._menu_mod.set_ai_status("联系不上（她先只做基础动作）")
 	else:
-		_host._menu_mod.set_ai_status("已连接")
+		# 正在跑本地那套（地址含 8530 ✓）就把档位也说出来 ✓ —— 一眼看出"本地在跑" ✓
+		if _host.chat_url.contains(_host.LOCAL_AI_MARK):
+			_host._menu_mod.set_ai_status("本地模型运行中（8530 主力 · 8531 工位）")
+		else:
+			_host._menu_mod.set_ai_status("已连接")

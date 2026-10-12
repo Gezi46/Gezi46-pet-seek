@@ -531,6 +531,31 @@ elseif ($Mode -eq 'watch') {
       try { [IO.File]::WriteAllText($script:stateFile, $s) } catch { }
       $script:last = $s
     }
+    # Tray tooltip: the base label plus whatever the pet wrote into "<state>.tip"
+    # (base64 of UTF-8, so this file stays ASCII-only - see the tray block above).
+    # 2026-10-12 (user): this is how "the local model is running" shows up - the icon
+    # only, no console windows. Empty file = back to the plain base label.
+    # Only touch $ni.Text when it actually changed: setting it every tick made the
+    # shell flicker the balloon area in an early test.
+    if ($null -eq $script:lastTip) { $script:lastTip = '' }
+    try {
+      $raw = ''
+      $tipPath = $script:stateFile + '.tip'
+      if (Test-Path $tipPath) {
+        $raw = ([IO.File]::ReadAllText($tipPath)).Trim()
+      }
+      if ($raw -ne $script:lastTip) {
+        $script:lastTip = $raw
+        if ($raw -eq '') {
+          $ni.Text = $lblTip
+        } else {
+          try {
+            $extra = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($raw))
+            $ni.Text = $lblTip + ' - ' + $extra
+          } catch { $ni.Text = $lblTip }
+        }
+      }
+    } catch { }
     # GPU usage -> its own file (only when a path was passed in). Write on change,
     # plus every ~5 ticks so a steady value still refreshes the other side's staleness.
     if ($script:gpuFile -ne '') {
