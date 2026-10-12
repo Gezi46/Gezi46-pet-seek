@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 记忆的**分层与遗忘**：一条记忆属于哪一层、忘得多快、什么时候清掉、什么时候巩固。
 ##
 ## 从 pet_memory.gd 搬出来（作业单 B4.2）。为什么值得独立：这是唯一一套"数学"——
@@ -125,12 +122,21 @@ static func _day_gap(created: float) -> int:
 static func retention_of(mem, it) -> float:
 	return retention(it.created, it.last_access, it.importance, it.access_count)
 
-## 所有记忆衰减一次。核心层靠 layer_of 保住，常规层会掉下去等着被清
+## 所有记忆衰减一次。**只衰减 importance，绝不重算 layer**。
+##
+## 为什么不能在这儿重算 layer（2026-10-07 修掉的 bug）：上面那条衰减公式是个迭代
+## `x ← 0.8·r·x + 0.1`，不动点 = 0.1/(1-0.8r) ≤ **0.5**（r 是保留率，永远 ≤ 1）。
+## 也就是说不论怎么复习，importance 都被压在 0.5 以下，够不到 IMPORTANT 的 0.6。
+## 以前这里跟着写了一句 `it.layer = layer_of(...)`，于是一条靠 add() 的 boost 顶进过
+## IMPORTANT/CORE 的记忆（比如"主人手欠…"被反复记、importance 累到 0.65）几轮之内就被
+## 降成常规层，而且**再也升不回来** —— 实测 8 份存档 100% 都是 layer 3，核心/重要形同虚设。
+##
+## giftia 原版也是只在写入时定一次 layer（prune_memories 里衰减只改 importance、不碰 layer）。
+## 分层现在只在两处定：pet_memory.add() 和 pet_memory_organize.merge_into()，且**只升不降**。
 static func decay(mem) -> void:
 	for it in mem.items:
 		var r := retention_of(mem, it)
 		it.importance = clampf(it.importance * r * 0.8 + 0.1, 0.0, 1.0)
-		it.layer = layer_of(it.importance, it.intensity)
 
 ## 清理：保留率低 + 层级低 + 没被想起来过的记忆，丢掉。
 ## 核心层和近期的常规记忆一律不动

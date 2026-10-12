@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 贴图 / 材质修整：把像素画渲染出来的杂讯消干净（轮廓白边、棱边白锯齿、UV 越界渗色）。
 ##
 ## 从 pet_rig.gd 搬出来（作业单 B3.2 —— B3.1 之后复核，那边还剩两套只关贴图的机制）。
@@ -20,6 +17,10 @@
 ## 接口面：**改宿主场景里的材质与网格**（挂 surface override 材质 / 把 mesh 换成重建过的）。
 ## 不碰文件、不碰网络、不发信号
 extends RefCounted
+
+## 可选：把那份共用材质换成"屏幕像素网格吸附"的着色器（治晃动时的移动锯齿 ✓）。
+## 见 pixel_snap.gdshader 头部的原理；宿主上 pet.pixel_snap = true 才挂 ✓
+const SNAP_SHADER := preload("res://scripts/body/rig/pixel_snap.gdshader")
 
 ## 把所有材质改成"像素画友好"的设定，消除轮廓白边：
 ##   - 最近邻采样：不再把相邻 texel（尤其是透明区里那些亮色 RGB）混进方块边缘
@@ -72,12 +73,29 @@ static func harden_materials(pet: Node3D) -> void:
 							if src_img != null else null)
 					if dilated[tex_key] != null:
 						sm.albedo_texture = dilated[tex_key]
-				cache[key] = sm
+				# 可选：换成"屏幕像素网格吸附"的着色器（治晃动时的移动锯齿 ✓，见 pixel_snap.gdshader）
+				# 只改顶点落在哪个像素上 ✓，UV / 贴图内容一字不动 ✓；宿主上 pixel_snap=false 就退回下面这套 ✓
+				if pet.pixel_snap:
+					var shm := ShaderMaterial.new()
+					shm.shader = SNAP_SHADER
+					shm.set_shader_parameter("albedo_tex", sm.albedo_texture)
+					shm.set_shader_parameter("scissor_threshold", pet.alpha_scissor_threshold)
+					# 超采样时渲染目标是屏幕的 N 倍，不除掉它就会吸附到"半个屏幕像素" ✓
+					shm.set_shader_parameter("snap_divisor", maxf(1.0, float(
+							ProjectSettings.get_setting("rendering/scaling_3d/scale", 1.0))))
+					# ⚠️ 别再设 `shm.texture_filter` ✗ —— ShaderMaterial **没有**这个属性
+					#（那是 BaseMaterial3D 的 ✗），实测会抛 "Invalid assignment of property"
+					# 并把整个 harden_materials 打断 ✗（材质一个都不挂、连带像素吸附失效 ✗）。
+					# 过滤方式写在着色器的 uniform 上：`filter_nearest` ✓
+					cache[key] = shm
+				else:
+					cache[key] = sm
 			mi.set_surface_override_material(si, cache[key])
 			touched += 1
 	if OS.is_debug_build():
-		print("[PetDeek] 材质加固：%d 个 surface 共用 %d 个材质，filter=%d scissor=%.2f dilate=%dpx" % [
-			touched, cache.size(), pet.texture_filter_mode, pet.alpha_scissor_threshold, pet.dilate_pixels])
+		print("[PetDeek] 材质加固：%d 个 surface 共用 %d 个材质，filter=%d scissor=%.2f dilate=%dpx ｜ 像素吸附=%s" % [
+			touched, cache.size(), pet.texture_filter_mode, pet.alpha_scissor_threshold,
+			pet.dilate_pixels, str(pet.pixel_snap)])
 
 ## 把每个三角形的 UV 朝它自己的 UV 包围盒中心收缩 `uv_inset_texels` 个 texel。
 ##
@@ -151,16 +169,26 @@ static func _inset_tri(uvs: PackedVector2Array, i0: int, i1: int, i2: int, tex: 
 	var lo: Vector2 = uvs[i0].min(uvs[i1]).min(uvs[i2])
 	var hi: Vector2 = uvs[i0].max(uvs[i1]).max(uvs[i2])
 	var span_px := (hi - lo) * tex          # 该面的 UV 跨度，单位 texel
+	if span_px.x <= 0.0 or span_px.y <= 0.0:
+		return
 	# 两边合计最多缩掉跨度的 1/4（即每边 1/8）：跨度 ≥4 texel 的面按 inset 走，
 	# 再小的面会被这个上限压住 —— 否则 2 texel 的面会被压缩掉一半，贴图肉眼可见地偏移。
 	var ix: float = minf(inset, span_px.x * 0.125)
 	var iy: float = minf(inset, span_px.y * 0.125)
 	if span_px.x <= 0.0 or span_px.y <= 0.0 or ix <= 0.0 or iy <= 0.0:
 		return
-	var center := (lo + hi) * 0.5
+	# ⚠️ 这里**故意按轴各算各的 k**，2026-10-08 试过改成"两轴同一个 k（等比）" ✗：
+	# 形状确实会方正 ✓，但等比意味着**把长边的缩量按短边的比例放大** ——
+	# 实测 90×5 的面 u 向要缩 9 texel（原设计只缩 0.5），整块面的贴图被放大 ✗，
+	# 图集里那些细白缝跟着变粗 → 用户报"像素块之间出现明显白色轮廓" ✗。
+	# 现在这个取舍是**保护优先** ✓：每边老实缩 0.5 texel，越界采样消失 ✓；
+	# 代价是细长面有一点各向异性 ✗ —— 但鞋那种大面（26×52）只有 2% ✓ 看不出来，
+	# 只有极细长的条（≤5 texel）才到 ~17% ✗。真要治那个得往图集里加留白，
+	# 不是这一步能动的事 ✓
 	var k := Vector2(
 		(span_px.x - ix * 2.0) / span_px.x,
 		(span_px.y - iy * 2.0) / span_px.y)
+	var center := (lo + hi) * 0.5
 	for i in [i0, i1, i2]:
 		uvs[i] = center + (uvs[i] - center) * k
 
@@ -200,35 +228,29 @@ static func dilate_image(img: Image, passes: int) -> Image:
 				var i: int = y * stride + x * 4
 				if data[i + 3] != 0:
 					continue                        # 本来就是不透明像素，不动
-				var r := 0
-				var g := 0
-				var b := 0
-				var n := 0
+				# 就近取色（**不是平均**）：四邻里第一个不透明的直接拿来用。
+				# ⚠️ 2026-10-09 从"取平均"改成这个 —— 平均会把两个图集岛之间的缝隙填成
+				# **两边的混色**（鞋的深色 + 隔壁白袜子的白 → 灰白 ✗），边缘采样一越界
+				# 拿到的就是那层灰白 = 用户报的"像素块之间有明显的白色轮廓" ✗。
+				# 就近取色 = 缝隙按"离哪个岛近"分给各自 ✓（多轮下来边界落在缝的中间），
+				# 越界采样拿到的就是**这块自己的颜色** ✓ —— 白边和白缝才能同时消失 ✓
 				if x > 0 and data[i - 1] != 0:
-					r += data[i - 4]
-					g += data[i - 3]
-					b += data[i - 2]
-					n += 1
-				if x < w - 1 and data[i + 7] != 0:
-					r += data[i + 4]
-					g += data[i + 5]
-					b += data[i + 6]
-					n += 1
-				if y > 0 and data[i - stride + 3] != 0:
-					r += data[i - stride]
-					g += data[i - stride + 1]
-					b += data[i - stride + 2]
-					n += 1
-				if y < h - 1 and data[i + stride + 3] != 0:
-					r += data[i + stride]
-					g += data[i + stride + 1]
-					b += data[i + stride + 2]
-					n += 1
-				if n > 0:
-					next[i] = r / n
-					next[i + 1] = g / n
-					next[i + 2] = b / n
-					# alpha 保持 0
+					next[i] = data[i - 4]
+					next[i + 1] = data[i - 3]
+					next[i + 2] = data[i - 2]
+				elif x < w - 1 and data[i + 7] != 0:
+					next[i] = data[i + 4]
+					next[i + 1] = data[i + 5]
+					next[i + 2] = data[i + 6]
+				elif y > 0 and data[i - stride + 3] != 0:
+					next[i] = data[i - stride]
+					next[i + 1] = data[i - stride + 1]
+					next[i + 2] = data[i - stride + 2]
+				elif y < h - 1 and data[i + stride + 3] != 0:
+					next[i] = data[i + stride]
+					next[i + 1] = data[i + stride + 1]
+					next[i + 2] = data[i + stride + 2]
+				# alpha 保持 0（整段不动 data[i + 3]）
 		data = next
 
 	img.set_data(w, h, false, Image.FORMAT_RGBA8, data)

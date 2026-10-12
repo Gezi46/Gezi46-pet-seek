@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 按桌宠正常流程渲染一张，不做任何材质/视图覆盖。
 ## 加深色底板是为了让透明轮廓上的白边显形。

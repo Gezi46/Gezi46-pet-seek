@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 把一张现成的图片裁成图标（正方形 PNG）。
 ##
 ## 用法: --path <项目> --script res://tools/make_icon.gd -- <源图> [模式] [边长] [输出]

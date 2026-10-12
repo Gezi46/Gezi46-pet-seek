@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 临时诊断：打印指定节点下各表面的 UV 矩形，并检查矩形"边界内/外各 2 个 texel"的颜色。
 ## 用来判断方块棱边的亮线，是采样漂移到相邻 UV 岛，还是岛自身的边缘 texel 就是亮的。

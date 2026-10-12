@@ -49,10 +49,14 @@ godot --path .
 | 左键**点击** | 摸头：随机害羞 / 挥手 / 做表情，并说一句 |
 | 左键**双击** | 弹出聊天框 |
 | 左键**拖动** | 拖到屏幕任意位置 |
-| **右键** | 菜单：喂食 / 睡觉 / 跳一下 / 放大缩小 / 位置 / 聊天 / 偷看屏幕 / 摄像头 / 设置 … |
+| **右键** | 菜单：喂食 / 睡觉 / 跳一下 / 放大缩小 / 位置 / 聊天 / 偷看屏幕 / 摄像头 / **我们的日记** / 设置 … |
 | 鼠标移到她身上 | 指针变手型 |
 
 闲置一会儿她会自己在屏幕上散步，撞到边就折返。
+
+陪她待着，她会把你们之间发生的事**按天记进一本日记**（右键「我们的日记…」能翻）——
+认识多少天、连着多少天见面、每天发生了什么。**那是给你看的**，
+和「她记住的关于你的事」（长期记忆）是两条分开的线。
 
 ---
 
@@ -66,6 +70,7 @@ godot --path .
 | 她的人格与长期记忆 | [`scripts/ai/memory/README.md`](scripts/ai/memory/README.md) |
 | 菜单、设置面板、工作台 | [`scripts/ui/README.md`](scripts/ui/README.md) |
 | 托盘、自启动、全屏安静、窗口 | [`scripts/sys/README.md`](scripts/sys/README.md) |
+| **她自己的日记**（给你看的，和长期记忆分开） | [`scripts/body/pet_diary/README.md`](scripts/body/pet_diary/README.md) |
 | 走路、朝向、动作节奏 | [`scripts/body/README.md`](scripts/body/README.md) |
 | 模型、贴图、动画、渲染 | [`scenes/README.md`](scenes/README.md) |
 | **改代码前先看这个** —— 踩过的坑 | [`docs/README.md`](docs/README.md) |

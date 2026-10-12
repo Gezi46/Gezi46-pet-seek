@@ -23,7 +23,6 @@ extends RefCounted
 ##       （`@export` 必须留在宿主：检查器只认挂在场景上的脚本，而设置面板也是
 ##         `SETTING_VARS` → `set(变量名)` 打在宿主上）
 ##   host._offline()          离线时别发那个小请求（白花时间）
-##   host._invalidate_passthrough()  按钮出现/消失后重算"可点区域"
 ##   picked(text)             点了哪一句 → 宿主送出去
 ##
 ## 对气泡（宿主传进来的 PetBubble + 气泡 Label）：只读它的位置和显示与否，
@@ -60,11 +59,14 @@ const AI_SYS := "只输出 JSON 数组，不要解释。内容必须是主人接
 const AI_PROMPT := "刚才的对话：\n%s\n她刚说：「%s」\n（场景：%s）\n" \
 	+ "给主人想 3 句最可能的下一句话：每句不超过 14 个字，口气随意、像随手打字，" \
 	+ "彼此不要雷同，也别都写成提问。**要能接住她刚说的那句**。" \
-	+ "只输出 JSON 数组，例如 [\"句子一\",\"句子二\",\"句子三\"]"
+	+ "只输出 JSON 数组，句子之间的逗号一个都不能少。\n" \
+	+ "例：她刚说「哼，今天没空理你，自己去忙吧。」→ " \
+	+ "[\"好吧好吧那你忙\", \"那我先打游戏啦\", \"晚上再来找你嘛\"]"
 ## 注意这条请求**走流式**（`send()`），不走 `ask_once()`：
 ## 它和聊天是同一条路（这条路在无头模式 / 各种后端下都验过），而且
 ## **不接 token 信号** —— 只有 replied 会到我们这儿，气泡完全不受影响。
-## 代价是没有 max_tokens 可给（流式那条不带它），所以提示词里写死了"只输出 JSON 数组"
+## 回复长度硬顶走 `max_reply_tokens`（流式那条现在也带了它，见 pet_chat.send），
+## 提示词里照旧写死"只输出 JSON 数组" —— 双保险，小模型不会散着说
 ##
 ## 另外：客户端的状态机要每帧推（见本文件 tick()）—— 漏了那一行的话，
 ## 请求发出去也没人收结果，表现成"这一组从来不出现"
@@ -108,7 +110,10 @@ static func quick_options_for(kind: String, line: String) -> Array[String]:
 ## 写成 static 是为了能脱离场景验证（tools/probe_memory.gd 会试它）
 static func parse_quick_options(text: String) -> Array[String]:
 	var out: Array[String] = []
-	for v in PetMemory.parse_json_array(text):
+	var items: Array = PetMemory.parse_json_array(text)
+	if items.is_empty():
+		items = _quoted_strings(text)    # 小模型编候选爱丢逗号（"a" "b" 裸数组），JSON 解析不过 —— 引号还在，直接抠
+	for v in items:
 		var s := String(v).strip_edges()
 		# 开头的 "-" "•" "1." "2、" 这类编号
 		while s.begins_with("-") or s.begins_with("•") or s.begins_with("·"):
@@ -126,6 +131,28 @@ static func parse_quick_options(text: String) -> Array[String]:
 		out.append(s)
 		if out.size() >= 3:
 			break             # 只要三句，多了气泡底下放不下
+	return out
+
+## JSON 洗不出来时的兜底：把成对引号里的串直接抠出来（半角 "…" 和弯引号 “…” 都认）。
+## 0.8B 实测会把逗号全丢掉（`["a" "b" "c"]`），那种数组 JSON.parse 必挂 ——
+## 但引号是完整的，抠出来照样能用。抠不出就返回空，调用方继续用本地那组
+static func _quoted_strings(text: String) -> Array:
+	var out: Array = []
+	for pair in [["\"", "\""], ["“", "”"]]:
+		var i := 0
+		while i < text.length() and out.size() < 6:
+			var open := text.find(pair[0], i)
+			if open < 0:
+				break
+			var close := text.find(pair[1], open + pair[0].length())
+			if close < 0:
+				break
+			var s := text.substr(open + pair[0].length(), close - open - pair[0].length()).strip_edges()
+			if s != "" and s.find("\n") < 0:
+				out.append(s)
+			i = close + pair[1].length()
+		if not out.is_empty():
+			break             # 半角引号抠到了就不用再试弯引号
 	return out
 
 ## 从文本里抠 JSON 数组这一步在记忆模块里（它干这个最熟）。
@@ -166,6 +193,10 @@ var _tries: int = 0
 ## 不该挡着她说话
 var _client: PetChat = null
 var _configured: bool = false
+## 回复长度硬顶（token）：本地模型宿主给 90（小模型对"说短点"的软提示不敏感，
+## 候选本身也只有三句短话，90 绰绰有余）。0 = 不限（云端行为不变）。
+## **发送时才灌给 _client**（见 _tick_ai）—— 宿主是 configure 之后才填这个值的
+var max_reply_tokens: int = 0
 
 # ------------------------------------------------------------------ 建 / 配 / 推进
 
@@ -193,12 +224,21 @@ func setup(host: Node, anchor: Control, label: Label, bubble_mod: RefCounted,
 	_client.replied.connect(_on_ai_done)
 	_client.failed.connect(_on_ai_failed)
 
-## 宿主换 AI 服务设置时调它（和聊天那个客户端同一份地址 / 密钥 / 文本模型）
-func configure(url: String, key: String, model: String) -> void:
+## 宿主换 AI 服务设置时调它（和聊天那个客户端同一份地址 / 密钥 / 文本模型）。
+## worker url 非空（本地档）时把这条**整个重指向工位小模型**：候选编的是
+## 「主人可能接的话」，不是她的台词 —— 人设风险低，0.8B 干得动；洗不出来还有
+## 本地兜底那组（按钮不会消失）。工位是纯 CPU，也不抢聊天那份显存。
+## 云端档 worker 空 = 跟聊天后端，行为与从前一致
+func configure(url: String, key: String, model: String,
+		p_worker_url := "", p_worker_model := "") -> void:
 	if _client == null:
 		return
-	_client.configure(url, key, model)
-	_configured = url.strip_edges() != ""
+	if p_worker_url.strip_edges() != "":
+		_client.configure(p_worker_url, key, p_worker_model)
+		_configured = true
+	else:
+		_client.configure(url, key, model)
+		_configured = url.strip_edges() != ""
 
 ## 每帧推进：自动收起 + 把"让模型编候选"那条排出去。
 ## 宿主在 _tick_chat 里调（位置和"她主动说话"的检查挨着，顺序别乱动）
@@ -291,7 +331,6 @@ func hide() -> void:
 	_want.clear()
 	_retry.clear()
 	_tries = 0
-	_host._invalidate_passthrough()
 	# 按钮收起 = 不用再等她接话了：把刚才按住的淡出还回去（不然气泡会一直挂着）
 	if was_visible and _bubble.is_visible():
 		_bubble.say(_label.text)
@@ -304,6 +343,11 @@ func clickable_rect() -> Rect2:
 
 func is_visible() -> bool:
 	return _box != null and _box.visible
+
+## 当前代号（pet_chat_flow 用：note_reply 前后各读一次，
+## 变了 = note_reply 已经摆过按钮（show_given），就别再 after_reply 换一组
+func last_gen() -> int:
+	return _gen
 
 # ------------------------------------------------------------------ 内部：摆按钮
 
@@ -351,10 +395,6 @@ func _show_buttons(opts: Array) -> void:
 	_place()
 	# 换上一组新的 = 重新给足阅读时间（模型回到时也能多看一会儿）
 	_hide_ms = Time.get_ticks_msec() + HIDE_MS
-	# 让穿透区下一帧重算，把按钮算进"可点区域" ——
-	# 不重算的话按钮飘在角色轮廓外，点上去会直接穿到后面的窗口
-	_host._invalidate_passthrough()
-
 ## 贴在气泡下沿（气泡高度是按文字量算出来的，所以每次都得重新放）
 func _place() -> void:
 	_box.position = Vector2(2.0, _label.position.y + _label.size.y + 2.0)
@@ -394,6 +434,9 @@ func _tick_ai() -> void:
 	var ctx := String(want.get("context", ""))
 	if ctx == "":
 		ctx = "（没有更早的对话）"
+	# 发送时才灌硬顶：宿主是 configure **之后**才填 max_reply_tokens 的，
+	# 在 configure 里拷一次拿到的是旧值 0（踩过）
+	_client.max_reply_tokens = max_reply_tokens
 	if not _client.send(AI_PROMPT % [ctx, _clip(String(want["line"]), 120), scene]):
 		_ai_gen = -1
 

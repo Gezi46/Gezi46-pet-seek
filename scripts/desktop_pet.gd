@@ -35,6 +35,8 @@ extends Node3D
 ##   聊天客户端全家 → `pet_conn` `pet_sse` `pet_once` `pet_retry` `pet_net` `pet_probe` `pet_usage`
 ##   系统集成 → `pet_shell_ps1` `pet_shell_watch` `pet_windows`｜装配动画 → `pet_rig_stats` `pet_rig_tex`
 ##   记忆 → `pet_memory_prompt` `pet_memory_forget`｜dsh 的改档 → `pet_dsh_settings`
+##   她自己的日记 → `pet_diary`（数据）`pet_diary_prompt`（提示词）`pet_diary_flow`（每天那一趟）
+##                   `ui/pet_diary_ui`（面板）
 ##
 ## 两次"评估后决定不搬"（作业单 B6.2 / B6.3，理由记在这儿免得以后重问一遍）：
 ##   B6.2 —— 「长期记忆」那一段现在**全是聊天接线**（收流 / 回执 / 离线判定 / 状态同步），
@@ -74,11 +76,17 @@ extends Node3D
 ##   17    聊天（发一句 / 收流 / 对话记录）   pet_chat.gd
 ##   18    聊天：接线（信号 / 配置 / tick）   配置改动要考虑运行时重配
 ##   19    长期记忆（抽取 / 摘要 / 存档）     pet_memory.gd + pet_memory_flow.gd
+##   19b   她自己的日记（拍子 / 每天一段）    pet_diary.gd + pet_diary_flow.gd
+##                                           面板在 ui/pet_diary_ui.gd，提示词在 pet_diary_prompt.gd
+##                                           **和长期记忆是两条独立的路**：那个给模型用，这个给你看
 ##   20    聊天：AI 服务设置                  面板在 pet_menu.gd
 ##   21    UI 面板（谁开着 / 点外面收起）     pet_pointer.gd 的穿透区要用
 ##   22    聊天：主动说话（自己找话题）       提示词在 #3 那段常量里
 ##   23    生闷气 / 被摸到的反应（同一条情绪线）**状态与判定在 pet_mood.gd**；
 ##                                           本文件只负责开口（要截图 / 流式气泡）
+##   23b   体谅（"你在忙吧，我先不吵你"）      pet_considerate.gd ——
+##                                           **和 23 是两条轴**：那条管情绪强度，这条管
+##                                           "怎么解读主人没回话"。三道门禁/互斥见文件头
 ##                                           分带判定在 pet_pointer.gd
 ##   24    聊天：对话记录 / 存档              user://pet_chat.cfg
 ##   另有  快速回答（气泡下那列按钮）整块在 **pet_quick.gd**
@@ -126,12 +134,9 @@ extends Node3D
 @export var idle_before_move: Vector2 = Vector2(2.0, 6.0)
 ## 待机时间到了之后，**真的起身走动**的概率。没中的话只是接着待机（再等一轮）——
 ## 这是把"一直在动"调成"偶尔动一下"的主开关，想让她活泼就往 1.0 调。
-## 2026-10-01 默认从 0.35 调到 0.2（用户要求"走动概率再调低点"）；
-## 右键菜单「移动频率」四档 / 设置面板都能改
+## 2026-10-01 默认从 0.35 调到 0.2（用户要求"走动概率再调低点"）。
+## 只在设置面板「窗口与操作」里改 —— 菜单里那套四档 2026-10-05 删了（同一件事两套 UI）
 @export_range(0.0, 1.0, 0.05) var move_chance: float = 0.2
-## 「移动频率」菜单的四档值（对应 pet_menu 的 ID_MOVE_*）。
-## 想让档位更细就改这张表 + pet_menu 里的标签
-const MOVE_CHANCE_STEPS: Array[float] = [0.0, 0.1, 0.2, 0.5]
 ## 「只在小范围走动」：开着她只在**家**附近那一小块里转，不再满屏溜达。
 ## 家 = home_anchor / 你拖到的位置（见 drag_sets_home）。
 ## 边界怎么算、已经在圈外怎么处理，都在 pet_walk._step_move 里（和安静模式共用一套）
@@ -147,6 +152,16 @@ const MOVE_CHANCE_STEPS: Array[float] = [0.0, 0.1, 0.2, 0.5]
 @export var run_duration: Vector2 = Vector2(1.0, 2.5)
 @export var rest_min: float = 0.4
 @export var rest_max: float = 2.2
+## 连续待机这么久（秒）她就**躺下歇着**（2026-10-10，T3）。
+## 0 = 关掉这个行为。**用 behavior_pace 缩放**，和别的节奏一起变慢。
+##
+## 默认给到 5 分钟（**故意偏保守**）：这个模型里没有真正的"坐"姿势，
+## 能用的是 `sleep`（仰面躺倒），看久了略怪 —— 让它只在"她真的很久没人理"时出现。
+## 想更频繁就调小；想看姿势长什么样先跑 tools/probe_pose_dump.gd
+@export var sit_after: float = 300.0
+## 坐下之后**至少**坐这么久（秒）再考虑起身 —— 不然刚坐下就站起来，看着像抽搐。
+## 和别的"动作后等待"一样按 anim_speed 换算
+@export var sit_min: float = 20.0
 @export var run_chance: float = 0.22
 @export var emote_chance: float = 0.3
 @export var blink_chance: float = 0.006
@@ -225,6 +240,10 @@ const MOVE_CHANCE_STEPS: Array[float] = [0.0, 0.1, 0.2, 0.5]
 ## 网页版只把对话拼成文本，图片等于没发；官方 API 有带视觉的别名
 @export var vision_url: String = "https://api.deepseek.com"
 @export var vision_model: String = "deepseek-v4-flash-vision-exp"
+## 后台杂活的工位（记忆抽取/摘要/日记 → 小模型；聊天模型只管对话撑人设）。
+## 空 = 跟聊天同一个后端。本地档在「AI 服务设置」选本地时自动指向 8531 的 0.8B
+@export var worker_url: String = ""
+@export var worker_model: String = ""
 ## 视觉那条的 key。留空 = 复用 chat_access_key（官方 API 同一个 key 能调视觉）
 @export var vision_access_key: String = ""
 ## 人设提示词。deepseek-web-api 会把 messages 拼成一段 prompt，
@@ -234,6 +253,18 @@ const MOVE_CHANCE_STEPS: Array[float] = [0.0, 0.1, 0.2, 0.5]
 @export var chat_persona_name: String = "小蓝"
 ## 长期记忆总开关（scripts/pet_memory.gd）。关掉 = 她每次都像第一次见你
 @export var memory_enabled: bool = true
+## 她自己的日记总开关（scripts/body/pet_diary.gd）。关掉 = 不记、也不写。
+##
+## **和 memory_enabled 分开**：长期记忆是"给模型用的事实"，日记是"给你看的流水"，
+## 两件事的取舍完全不同 —— 有人愿意让她记得自己的偏好，但不想被记流水账
+@export var diary_enabled: bool = true
+## 让模型把当天的日记写得更自然（会多一次非流式请求）。
+## 关掉 = 只用本地模板合成（零成本、离线可用，但句子是拼出来的）。
+## **一天最多一次**，所以这条的代价很小
+@export var diary_ai: bool = true
+## 一天里的拍子攒到几条之后，她就想写日记了（攒够才写，写出来才有东西）。
+## 默认 4：`talk` 一天最多记 4 条，所以"聊了三四轮"就够一天的量 —— 太低会天天写
+@export_range(1, 12, 1) var diary_ready_beats: int = 4
 ## 让她用模型抽记忆。会多一次非流式请求（很便宜但确实在花钱）；
 ## 关掉只影响"自动抽取"，本地规则抓到的记忆照常记
 @export var memory_ai_extract: bool = true
@@ -268,9 +299,7 @@ const MOVE_CHANCE_STEPS: Array[float] = [0.0, 0.1, 0.2, 0.5]
 @export_range(0.0, 1.0, 0.05) var quick_chance: float = 0.7
 ## 聊天时也**概率**弹一次。比主动开口低 —— 聊天时你多半正打着字，按钮反而碍事
 @export_range(0.0, 1.0, 0.05) var quick_chance_chat: float = 0.20
-## 「回复按钮出现频率」菜单的四档值（对应 pet_menu 的 ID_QUICK_*）。
-## 只给四档而不是细滑条：右键菜单里选档比翻设置面板快，想要更细去设置面板拖 quick_chance
-const QUICK_CHANCE_STEPS: Array[float] = [0.0, 0.25, 0.5, 0.75]
+
 ## 主动说话总开关。注意 deepseek-web-api **没有推送通道**，
 ## 所以"主动开口"完全由本地计时决定（见 self_talk_after）
 @export var proactive_enabled: bool = true
@@ -387,9 +416,20 @@ const PetSettings := preload("res://scripts/ui/pet_settings.gd")
 const PetHarness := preload("res://scripts/sys/pet_harness.gd")
 ## 工作台面板（派活 / 看原文 / 重启她），见 scripts/pet_workbench.gd
 const PetWorkbench := preload("res://scripts/ui/pet_workbench.gd")
+## 体谅（"你在忙吧，我先不吵你"），见 scripts/body/pet_considerate.gd。
+## **和情绪是两条轴**：pet_mood 管情绪强度，它管"怎么解读主人的沉默"
+const PetConsiderate := preload("res://scripts/body/pet_considerate.gd")
+## 她自己的日记（拍子 / 每天一段 / 认识多少天），见 scripts/body/pet_diary.gd。
+## **和长期记忆是两件事**：那个是给模型用的事实，这个是给你看的流水
+const PetDiary := preload("res://scripts/body/pet_diary.gd")
+## 日记的每天那一趟（跨天、攒够就写、AI 那条），见 scripts/body/pet_diary_flow.gd
+const PetDiaryFlow := preload("res://scripts/body/pet_diary_flow.gd")
+## 「我们的日记」那一屏，见 scripts/ui/pet_diary_ui.gd
+const PetDiaryUi := preload("res://scripts/ui/pet_diary_ui.gd")
 ## 日志（自己落盘 + 一键导出），见 scripts/sys/pet_log.gd。
-## 为什么单独有个日志：导出版没有控制台，出问题时用户手里只有一句"它不动了" ——
-## 现场必须自己落一份文件（带级别、能轮转，不依赖项目设置）
+## 为什么单独有个日志：导出版没有控制台，出问题时用户手里只有一句"它不动了"，
+## 而 print() 在那边**不进引擎日志**（见 _log_startup 上面那段实测），
+## 所以现场必须自己写文件
 const PetLog := preload("res://scripts/sys/pet_log.gd")
 
 ## 设置面板里那批键 → 检查器里的变量名。
@@ -412,6 +452,9 @@ const SETTING_VARS: Dictionary = {
 	"memory_ai_every_sec": "memory_ai_every_sec",
 	"memory_summary_every": "memory_summary_every",
 	"memory_observe": "memory_observe",
+	"diary_enabled": "diary_enabled",
+	"diary_ai": "diary_ai",
+	"diary_ready_beats": "diary_ready_beats",
 	"chat_log_lines": "chat_log_lines",
 	"self_talk_enabled": "self_talk_enabled",
 	"peek_every_min": "peek_every_min",
@@ -443,6 +486,7 @@ const SETTING_SAVED: Array[String] = [
 	"persona_name", "persona_extra",
 	"memory_enabled", "memory_ai_extract", "memory_ai_every_sec",
 	"memory_summary_every", "memory_observe",
+	"diary_enabled", "diary_ai", "diary_ready_beats",
 	"chat_log_lines", "self_talk_enabled", "peek_every_min", "camera_every_min",
 	"catch_padding", "double_click_ms", "pet_cooldown", "drag_sets_home",
 	"move_chance", "stay_nearby", "nearby_radius",
@@ -481,10 +525,8 @@ var _last_click_ms: int = 0
 var _last_pet: float = 0.0
 var _hover: bool = false
 var _catching: bool = false
-var _passthrough_bound: Rect2 = Rect2()    # 当前"可点区域"的包围盒，只用于死区比较
-var _passthrough_set: bool = false
-## GPU 占用率超过这个值（%）她就**待在原地不动** —— 打游戏 / 跑重活的时候，
-## 她突然站起来溜达或者弹一排候选是最碍事的。0 = 关掉这个判断。
+## GPU 占用率超过这个值（%）她**待在原地不动**，也不递候选按钮 ——
+## 打游戏的时候她突然站起来溜达、或者弹一排候选，最碍事。0 = 关掉这条。
 ## 阈值在设置面板里拖（2026-10-03 用户要求）
 ##
 ## 2026-10-05 改的：这一条原先是"自动透视"（阈值一到就把整窗设成鼠标穿透，
@@ -575,6 +617,14 @@ var instance := PetInstance.new()
 var memory: PetMemory = null               # 长期记忆（scripts/pet_memory.gd）
 var harness: PetHarness = null             # 本机 dsh 的调用口（scripts/pet_harness.gd）
 var _workbench: PetWorkbench = null        # 工作台面板（scripts/pet_workbench.gd）
+var _diary: PetDiary = null                # 她自己的日记（scripts/body/pet_diary.gd）
+var _diary_flow: PetDiaryFlow = null       # 日记的每天那一趟（scripts/body/pet_diary_flow.gd）
+var _diary_ui: PetDiaryUi = null           # 「我们的日记」面板（scripts/ui/pet_diary_ui.gd）
+var _considerate: PetConsiderate = null    # 体谅（scripts/body/pet_considerate.gd）
+## 她现在"坐着歇着"吗（见 walk._start_idle 里那段"坐一坐"）。
+## **放在宿主**：起身这件事在 `_play()` 里统一判 —— 不管因为什么（被摸、被喂、
+## 心情变了、开始走）只要重新播了动画就说明她动了。放模块里就得每个调用点都记得喊她起来
+var _resting: bool = false
 ## 这一轮派给 dsh 的活（回来时要拿它拼"让她转述"的提示词）
 var _harness_task: String = ""
 ## 这一轮的活是从工作台派的（那就不让她转述，原文直接摆在工作台里）
@@ -625,6 +675,18 @@ var _camera_timer: float = 0.0             # 距离下次"看一眼摄像头"还
 ## Blockbench 图集的 UV 岛之间是空白像素，采样在 UV 边界会把空白混进轮廓；
 ## 把图案颜色往外扩几圈之后，边界采样拿到的就是相邻图案的颜色。见 _dilate_image()。
 @export_range(0, 6, 1) var dilate_pixels: int = 2
+## 顶点吸附到屏幕像素格点（治她"微微晃动"时缝隙边缘的移动锯齿 ✓）。
+## 原理见 scripts/body/rig/pixel_snap.gdshader：待机只晃 0.1~0.15° = 亚像素位移 ✗，
+## 顶点在像素格之间来回蹭，采样格和 scissor 覆盖跟着翻 → 边缘一格一格抖 ✓。
+## 吸附之后要么不动、要么整格跳 1px ✓。**只改"画到哪个像素"，UV 和贴图一字不动** ✓
+##
+## ⚠️ 2026-10-09 试过，**默认关掉** ✗ —— 用户实测"更奇怪了，还不如之前的" ✗。
+## 原因（我那版判据只量了"画面稳不稳"，**没量部件之间会不会被拆开** ✗）：
+## 这是**逐顶点**吸附 ✗ —— 紧挨着的两块各自落到相邻格点上，就会各自跳 1px ✗，
+## 于是原本贴着或只差 1px 的**缝隙会一格一格地开合** ✗，比原来的亚像素抖动更扎眼 ✓。
+##（复古 3D 里的常规做法是**整个物体统一一个吸附偏移** ✓，部件之间才不会被拆 ✗；
+##  那条路只治平移、不治旋转，收益有限 ✓。开关留着，想再试随时打开 ✓）
+@export var pixel_snap: bool = false
 ## 是否启用 TAA（时间抗锯齿）。TAA 靠跨帧抖动 + 累积，能填掉方块之间那些
 ## MSAA 盖不住的亚像素缝隙（轮廓上的白线）。
 ## 注意：**TAA 和透明背景互斥** —— 实测打开 TAA 后 viewport 的透明像素会变成 0，
@@ -640,7 +702,11 @@ var _camera_timer: float = 0.0             # 距离下次"看一眼摄像头"还
 @export var background_color: Color = Color(0.97, 0.97, 0.98)
 ## 每个面的 UV 向内收缩多少个 texel（0 = 关闭），启动时生效，改了要重启。
 ## 这是"方块棱边白色小锯齿"的根治手段，原理见 _inset_uvs()。
-@export_range(0.0, 1.0, 0.05) var uv_inset_texels: float = 0.5
+## ⚠️ 2026-10-09 默认从 0.5 改成 **0**：内缩 = 把这块面的贴图放大（0.5 texel 在 5 texel
+## 高的窄面上就是 +25% ✗），图集里那些细白缝跟着变粗 —— 用户报"像素块之间出现明显的
+## 白色轮廓" ✓。现在边界这件事交给**贴图外扩**（dilate_image 改成"就近取色" ✓，越界采样
+## 拿到的是本块自己的颜色 ✓）。真要再压一层保险，用检查器把它调回 0.15 试 ✓
+@export_range(0.0, 1.0, 0.05) var uv_inset_texels: float = 0.0
 ## 是否关掉镜面高光。
 ## 材质默认是 `specular_mode = Schlick-GGX = 0` + `metallic_specular = 0.5`（实测），
 ## 而 Fresnel 在**掠射角**会趋于 1 —— 方块模型的每条棱边恰好都是掠射角，
@@ -655,11 +721,11 @@ var _camera_timer: float = 0.0             # 距离下次"看一眼摄像头"还
 ## 按全长计时的话，表现就是"动作做一半就杵在那里不动，像回到了静止动画"。
 ## 打开后动作演完就接下一个，不再空等那段静止尾巴。
 @export var action_tail_trim: bool = true
-## 是否启用鼠标穿透（角色轮廓之外点击落到后面的窗口上）。
-## 穿透是靠 Windows 的 SetWindowRgn 裁剪窗口区域实现的，实测它会让窗口可见区域
-## 整体多出一层很淡的提亮（桌面图标看着发白、且边界正好在轮廓处），所以默认关掉；
-## 需要穿透再打开，但要接受那层提亮。
-@export var mouse_passthrough_enabled: bool = false
+## 裙摆外扩倍率（1.0 = 关闭）。裙板和她的腿原来是互相插着的 —— 近景能看到腿从裙面里
+## 捅出来。>1 把整圈裙板绕体中轴**水平**放大（高度不变），裙子就离开腿了。
+## 2026-10-08 用户要求"裙子穿模有点严重，往外扩一扩"，默认 1.12。
+## 只放水平方向的原因（等比放大会把裙子往下坠 8cm）见 pet_rig._expand_skirt()。
+@export_range(1.0, 1.6, 0.01) var skirt_expand: float = 1.12
 ## 屏幕空间抗锯齿：关闭 / FXAA / SMAA。
 ## 它是**单帧的图像后处理**（边缘检测后沿着边缘混合），所以不要求不透明背景，
 ## 原理上能和透明窗口共存 —— 但实测它在透明背景下是**帮倒忙**（逐通道 diff 验证）：
@@ -792,9 +858,11 @@ func _ready() -> void:
 	_build_chat_ui()        # 输入面板（先建好，收键盘时才来得及切焦点）
 	_setup_quick()          # 快速回答那一列（跟在 _build_chat_ui 后面：要它建的中文字体）
 	_setup_mood()           # 情绪（状态与判定归模块；它只发信号，开口的事留在本文件）
+	_setup_diary()          # 她自己的日记（跟着 mood：日记要读"当时什么心情"）
 	_build_menu()           # 分类菜单 + AI 设置面板（runtime 搭，见 scripts/pet_menu.gd）
 	_build_settings()       # 设置面板（scripts/pet_settings.gd）
 	_build_workbench()      # 工作台面板（scripts/pet_workbench.gd）
+	_build_diary_ui()       # 「我们的日记」面板（scripts/ui/pet_diary_ui.gd）
 	_load_chat_config()     # 上次改过的开关 / AI 后端设置
 	# 设置面板里那些（人设 / 记忆 / 节奏 / 系统）也要在读记忆之前读回来：
 	# memory_enabled 决定 _setup_memory 建不建，peek/camera 的间隔决定 _setup_chat
@@ -813,6 +881,13 @@ func _ready() -> void:
 	_sync_system_menu()     # 自启动的真实状态取自注册表，不看我们自己的开关
 	_log_startup()          # "我是怎么被启动的" —— 自启动排查全靠这行日志
 	_log_environment()      # 引擎 / 数据目录 / 哪些能力是残的（见 scripts/sys/pet_log.gd）
+
+	# 关系计数：她又被打（打开）了一次 —— 关系感知的"见面次数"那一项
+	# （见 pet_diary.relation_text）。**必须在 _setup_memory() 之后**：
+	# 那几个计数存在记忆文件里，没读回来就加会从 0 起、把历史冲掉
+	if memory_enabled and memory != null:
+		memory.note_session()
+		memory.save()
 
 	walk._start_idle(walk._idle_time())
 
@@ -833,7 +908,17 @@ func _process(delta: float) -> void:
 	_tick_chat(delta)
 	# 生闷气时弹的「哄她」选择框：8 秒没点就自己收掉（状态在 pet_mood_ui.gd）
 	_mood_ui.tick()
-	# GPU 占用率高（打游戏）→ 自动透视：整窗穿透 + 不递候选（阈值在设置面板）
+	# 体谅：保持期到了就自己回来（见 pet_considerate.gd）。**放在 _tick_chat 之前**：
+	# 那一帧她刚回来，"主动开口"的门禁就该看到最新的状态
+	if _considerate != null:
+		_considerate.tick()
+		if _considerate.take_back_line():
+			_say(_considerate.back_line())
+	# 日记：跨天检查 + 攒够拍子就写今天的（见 pet_diary_flow.gd）。
+	# 放在 mood 后面：它要读"她当时什么心情"当素材
+	if _diary_flow != null:
+		_diary_flow.tick()
+	# GPU 占用率高（打游戏）→ 她不动 + 不递候选（阈值在设置面板）
 	_tick_gpu()
 	# 全屏检测 + 定期重申置顶（内部自己限流，不是每帧都干活）
 	if shell != null:
@@ -845,6 +930,12 @@ func _process(delta: float) -> void:
 
 	match _state:
 		State.IDLE:
+			# 连续待机多久（给"坐一坐"用）。**坐下之后就不再累加**
+			if not _resting:
+				walk._sit_accum += delta
+			# 闲够了就坐下 —— 每帧自己查，和"走完一段才回待机"解耦
+			# （挂在 _start_idle 里的话，离线假死 / 骰子没中时她一直不走，坐下永远轮不到）
+			walk.tick_sit()
 			_timer -= delta
 			if _timer <= 0.0:
 				walk._begin_move()
@@ -930,6 +1021,9 @@ func _beat(t: float) -> float:
 	return rig._beat(t)
 
 func _play_action(name: String, blend: float = 0.15, extra: float = 0.35) -> void:
+	# 也走一遍"她动了"的收尾（理由见 _play 上面那段）。这个壳直接进 rig，
+	# 不经过 _play，所以得自己清 —— 漏了的话"躺着时被摸"她会保持躺姿不起身
+	_resting = false
 	rig._play_action(name, blend, extra)
 
 func _action_time(name: String, extra: float = 0.35) -> float:
@@ -938,7 +1032,26 @@ func _action_time(name: String, extra: float = 0.35) -> float:
 func _pick(names: Array, fallback: String) -> String:
 	return rig._pick(names, fallback)
 
+## 播一个动画。**顺手让她从"坐着歇着"里起来** —— 只要重新播了动画就说明她动了
+## （被摸 / 被喂 / 心情变了 / 开始走 / 动作反应…全都走这儿），
+## 所以"起身"不需要在每个调用点各写一遍。
+##
+## ⚠️ **它不管 `_sit_accum`**（"闲了多久"）：试过在这里清零，结果是
+## **心情微变那种被动重播也在清零** —— 计数永远涨不到阈值，坐下从不触发
+## （实测每 2~5 秒被清一次，动画始终是 __pet_idle）。所以清零只在**真正的互动点**：
+## 摸她 / 拖她 / 喂她（pet_pointer.gd），以及真的起身走（walk._begin_move）
+## 她被打断了（被摸 / 被拖 / 被喂 / 开始走）：从"躺着歇着"里起来，并把"闲了多久"清零。
+##
+## **不要只靠"重新播动画"来间接起身**：试过在 `_play()` 里清 `_resting`，但
+## `_play()` 有个"名字相同就早退"的优化（见 rig._play），于是"躺着的动画名恰好已经是
+## 待机名"那一路就绕过去了，`_resting` 留着 true、`tick_sit` 又把她按回去 ——
+## 表现出来是"被摸了还躺着"。所以起身要有自己的一条**显式**路径。
+func _wake_from_rest() -> void:
+	_resting = false
+	walk._sit_accum = 0.0
+
 func _play(name: String, blend: float = 0.15) -> void:
+	_resting = false
 	rig._play(name, blend)
 
 func _blink() -> void:
@@ -992,7 +1105,6 @@ func _nearby_bounds() -> Rect2i:
 # ------------------------------------------------------------------ 鼠标 / 互动
 # 实现全在 PetPointer（scripts/pet_pointer.gd）。这里只留稳定门面：
 #   - _input 是 Godot 虚函数，引擎只调主脚本，逐字转发给 pointer；
-#   - _update_passthrough_region 被 PetWindow.apply_window_size 回调；
 #   - _begin_drag / _end_drag 是探针（probe_drag_state）打的接口。
 
 func _input(event: InputEvent) -> void:
@@ -1004,11 +1116,6 @@ func _input(event: InputEvent) -> void:
 	# （这里原先还有一道"GPU 高时鼠标事件一律不给 pointer"的守卫，2026-10-05 去掉了：
 	#   它是给整窗穿透做双保险的；穿透删了之后，再拦就只剩"她明明点得到却没反应"）
 	pointer._input(event)
-
-func _update_passthrough_region() -> void:
-	if pointer == null:
-		return      # _ready 未完成（见 _process / _input 那两道守卫）
-	pointer._update_passthrough_region()
 
 func _begin_drag() -> void:
 	pointer._begin_drag()
@@ -1060,10 +1167,9 @@ func _on_menu_id(id: int) -> void:
 				pointer._wake_up()
 			else:
 				pointer._go_sleep()
+			# 日记：睡了一觉 / 醒了（不管哪个方向都算这天有过这件事）
+			_diary_note(PetDiary.BEAT_SLEEP)
 		PetMenu.ID_JUMP: pointer._do_jump()
-		PetMenu.ID_SCALE_75: set_scale_percent(0.75)
-		PetMenu.ID_SCALE_100: set_scale_percent(1.0)
-		PetMenu.ID_SCALE_135: set_scale_percent(1.35)
 		PetMenu.ID_TOGGLE_TOP:
 			# 走 shell 的意愿接口，而不是直接改标志 ——
 			# 菜单开着时我们会故意把置顶摘掉，直接看标志会读错她的意愿
@@ -1074,45 +1180,26 @@ func _on_menu_id(id: int) -> void:
 		PetMenu.ID_HOME_HERE:
 			set_home_here()
 			_say("记住这里啦～")
-		PetMenu.ID_STAY_NEARBY: _toggle_stay_nearby()
 		PetMenu.ID_HOME_DEFAULT:
 			set_home(PetWindow.HOME_DEFAULT)
 			_dock_to_home()
 			_say("回到右下角啦～")
-		PetMenu.ID_EXPORT_LOG: _export_logs()
 		PetMenu.ID_QUIT: _quit()
 		PetMenu.ID_RENAME: _open_rename()
 		PetMenu.ID_SETTINGS: _open_settings()
+		PetMenu.ID_EXPORT_LOG: _export_logs()
 		PetMenu.ID_WORKBENCH: _open_workbench()
+		PetMenu.ID_DIARY: _open_diary()
 		PetMenu.ID_CHAT: _open_chat()
 		PetMenu.ID_ASK: _ask_proactive()
 		PetMenu.ID_PEEK_NOW: _peek_and_comment()
 		PetMenu.ID_CAMERA_NOW: _camera_look()
-		PetMenu.ID_PROACTIVE: _toggle_proactive()
 		PetMenu.ID_PEAK_REDUCE: _toggle_peak_reduce()
-		PetMenu.ID_PEEK: _toggle_peek()
 		PetMenu.ID_PROACTIVE_PEEK: _toggle_proactive_peek()
-		PetMenu.ID_CAMERA: _toggle_camera()
 		PetMenu.ID_AI_SETTINGS: _open_ai_settings()
 		PetMenu.ID_AI_RECONNECT: _reconnect_ai()
 		PetMenu.ID_HARNESS: _toggle_harness()
 		PetMenu.ID_HARNESS_TASK: _open_harness_task()
-		PetMenu.ID_AUTOSTART: _toggle_autostart()
-		PetMenu.ID_HIDE_TASKBAR: _toggle_hide_taskbar()
-		PetMenu.ID_QUIET_FULLSCREEN: _toggle_quiet()
-		PetMenu.ID_TRAY: _toggle_tray()
-		PetMenu.ID_TALK_SELDOM: _set_talk_rate(0)
-		PetMenu.ID_TALK_NORMAL: _set_talk_rate(1)
-		PetMenu.ID_TALK_OFTEN: _set_talk_rate(2)
-		PetMenu.ID_TALK_VERY_OFTEN: _set_talk_rate(3)
-		PetMenu.ID_QUICK_NEVER: _set_quick_chance(0)
-		PetMenu.ID_QUICK_RARE: _set_quick_chance(1)
-		PetMenu.ID_QUICK_HALF: _set_quick_chance(2)
-		PetMenu.ID_QUICK_OFTEN: _set_quick_chance(3)
-		PetMenu.ID_MOVE_NEVER: _set_move_chance(0)
-		PetMenu.ID_MOVE_RARE: _set_move_chance(1)
-		PetMenu.ID_MOVE_SOME: _set_move_chance(2)
-		PetMenu.ID_MOVE_OFTEN: _set_move_chance(3)
 		_: pass
 
 # -------------------------------------------------- 菜单：交给 pet_menu.gd
@@ -1134,13 +1221,9 @@ func _build_menu() -> void:
 
 func _sync_menu_toggles() -> void:
 	if _menu_mod != null:
-		_menu_mod.sync_toggles(_proactive_on, _peek_on, _camera_on, _proactive_peek_on)
+		_menu_mod.sync_proactive_peek(_proactive_peek_on)
 		_menu_mod.sync_peak_reduce(_peak_reduce_on)
-		_menu_mod.sync_talk_rate(_proactive.rate)
-		_menu_mod.sync_quick_chance(_quick_chance_index())
-		_menu_mod.sync_move_chance(_move_chance_index())
 		_menu_mod.sync_harness(harness_enabled)
-		_menu_mod.sync_stay_nearby(stay_nearby)
 
 # -------------------------------------------------- 设置面板（scripts/pet_settings.gd）
 #
@@ -1200,6 +1283,22 @@ func _on_settings_command(name: String) -> void:
 			if memory != null:
 				var path := ProjectSettings.globalize_path(memory.file_path)
 				OS.shell_open(path.get_base_dir())
+		"cmd_diary":
+			# 设置面板先收掉：日记是另一个面板，两个同时开着既挤又容易点错
+			if _settings_mod != null:
+				_settings_mod.close()
+			_open_diary()
+		"cmd_clear_diary":
+			if _diary != null:
+				_diary.clear_all()
+				# 「认识多少天」也跟着重来 —— 不然清完日记还写着"认识 300 天"，
+				# 而下面一条记录都没有，看着像坏了
+				_diary.first_day = _today_stamp()
+				_diary.save()
+			if _diary_ui != null:
+				_diary_ui.refresh()
+			_settings_mod.set_status(_diary_status())
+			_say("……我把日记撕掉了。以后重新写吧。")
 		"cmd_open_ai":
 			# 设置面板先收掉：AI 面板是另一个面板，两个同时开着既挤又容易点错
 			if _settings_mod != null:
@@ -1343,6 +1442,16 @@ func _memory_status() -> String:
 		line += "她现在：" + _mood.describe_short()
 	return line
 
+## 日记的现状，显示在设置面板底下（也是"清空日记"之后刷新的那行）。
+## 和上面那行记忆状态并排看：一个是"她记住了哪些事实"，一个是"她记下了哪些日子"
+func _diary_status() -> String:
+	if _diary == null:
+		return "日记：没建起来"
+	if not diary_enabled:
+		return "日记：关着"
+	var n: int = _diary.entries().size()
+	return "日记：%s，%d 天有记录" % [_diary.stats_line(), n]
+
 # -------------------------------------------------- 调用本机 dsh（scripts/pet_harness.gd）
 #
 # 主人说"干活：…" → 她去调本机的 DeepSeek Harness 把活做了 → 回来用自己的口气讲结论。
@@ -1480,6 +1589,14 @@ func _open_workbench() -> void:
 
 func _on_workbench_closed() -> void:
 	_set_chat_focus(false)
+
+## 搭「我们的日记」面板并接线。**不用 _set_chat_focus**：它是只读的，没有输入框，
+## 抢键盘焦点只会把别的窗口顶下去（工作台要打字才需要那一步）
+func _build_diary_ui() -> void:
+	_diary_ui = PetDiaryUi.new()
+	_diary_ui.build(get_node_or_null("UI") as CanvasLayer, _diary, _cjk_font)
+	_diary_ui.closed.connect(func() -> void: pass)
+	_diary_ui.write_requested.connect(_on_diary_write_requested)
 
 ## 工作台顶栏那行小字：她这一趟会用哪个推理档、能不能改文件
 func _workbench_status() -> String:
@@ -1676,56 +1793,8 @@ func _sync_system_menu() -> void:
 		return
 	shell.refresh()
 	if _menu_mod != null:
-		_menu_mod.sync_system(shell.autostart_on, shell.hide_taskbar,
-			quiet_when_fullscreen, tray_icon)
+		# 那四个开关的勾已经不在菜单里了（都归设置面板），这儿只剩刷那一行状态
 		_menu_mod.set_autostart_status(shell.autostart_status())
-
-func _toggle_quiet() -> void:
-	quiet_when_fullscreen = not quiet_when_fullscreen
-	shell.set_fullscreen_aware(quiet_when_fullscreen)
-	_sync_system_menu()
-	_say("看视频时我会安静待着～" if quiet_when_fullscreen else "全屏时我也照常活动啦～")
-
-func _toggle_tray() -> void:
-	tray_icon = not tray_icon
-	shell.set_tray_icon(tray_icon)
-	_sync_system_menu()
-	_say("托盘里有我啦，在右下角那个「隐藏的图标」里～" if tray_icon else "托盘图标收起来啦～")
-
-func _toggle_autostart() -> void:
-	if shell == null:
-		return
-	var want: bool = not shell.autostart_on
-	if shell.set_autostart(want):
-		_say("以后开机我自己就出来啦～" if want else "那开机就不打扰你啦～")
-	else:
-		# 失败（非 Windows / 注册表被锁）要说清楚原因，不能只是勾没变
-		_say("没能设置开机自启动：%s" % shell.last_error)
-	_sync_system_menu()
-
-func _toggle_hide_taskbar() -> void:
-	if shell == null:
-		return
-	shell.set_hide_taskbar(not shell.hide_taskbar)
-	_sync_system_menu()
-
-## 「只在小范围走动」：开着她只在家附近那一小块里转（范围大小在设置面板里调）。
-## **已经在圈外不会瞬移** —— 等她溜达回来才夹住（见 pet_walk._step_move）
-func _toggle_stay_nearby() -> void:
-	stay_nearby = not stay_nearby
-	_save_app_settings()
-	_sync_menu_toggles()
-	_say("好，我就在这附近待着～" if stay_nearby else "又能到处溜达啦～")
-
-func _toggle_proactive() -> void:
-	# 主动说话现在完全由本地计时决定（deepseek-web-api 没有推送通道），
-	# 客户端那边不需要任何开关 —— 真正的门在 _check_self_talk 里
-	_proactive_on = not _proactive_on
-	# 重新开始数"她闲得慌"的倒计时：否则关着的时候攒下的时间会在打开瞬间就触发
-	_proactive.reschedule()
-	_save_chat_config()
-	_sync_menu_toggles()
-	_say("主动说话：%s" % ("开" if _proactive_on else "关"))
 
 ## 「高峰时段少说话」：DeepSeek 官方高峰（工作日 9~12、14~18，北京时间）把主动
 ## 开口间隔拉长 5 倍，少去撞限流 / 少等慢响应（2026-09-29 用户要求）。即时生效
@@ -1758,59 +1827,6 @@ static func talk_span_for(rate: int, base: Vector2) -> Vector2:
 func talk_span() -> Vector2:
 	return _proactive.span()
 
-## 菜单「主动说话的频率」：换档，并**立刻**按新档重数倒计时。
-## 不重数的话，切到"很频繁"还得先等完上一档攒下的十几分钟，看起来像没生效
-func _set_talk_rate(idx: int) -> void:
-	_proactive.set_rate(clampi(idx, 0, TALK_RATE_NAMES.size() - 1))
-	_proactive.reschedule()
-	_save_chat_config()
-	_sync_menu_toggles()
-	var span := _proactive.span()
-	_say("那我大概 %d~%d 分钟找你聊一次～" % [
-		maxi(1, int(round(span.x / 60.0))), maxi(1, int(round(span.y / 60.0)))])
-
-## 菜单「回复按钮出现频率」：把 quick_chance 设成四档里的某一档
-func _set_quick_chance(idx: int) -> void:
-	idx = clampi(idx, 0, QUICK_CHANCE_STEPS.size() - 1)
-	quick_chance = QUICK_CHANCE_STEPS[idx]
-	_save_app_settings()
-	_sync_menu_toggles()
-	_say(["好，那我以后不递候选了。", "行，偶尔给你递一句～",
-		"嗯，一半一半吧～", "好，我多递几句～"][idx])
-
-## 把 quick_chance（0~1）归到四档里的最近一档，给菜单勾选用
-func _quick_chance_index() -> int:
-	var best := 0
-	var best_d := 1e9
-	for i in QUICK_CHANCE_STEPS.size():
-		var d := absf(quick_chance - QUICK_CHANCE_STEPS[i])
-		if d < best_d:
-			best_d = d
-			best = i
-	return best
-
-## 菜单「移动频率」：把 move_chance 设成四档里的某一档。
-## **立刻重数一次待机倒计时** —— 否则切到"经常"还得先等完上一档攒下的十几秒，像没生效
-func _set_move_chance(idx: int) -> void:
-	idx = clampi(idx, 0, MOVE_CHANCE_STEPS.size() - 1)
-	move_chance = MOVE_CHANCE_STEPS[idx]
-	walk._start_idle(walk._idle_time())
-	_save_app_settings()
-	_sync_menu_toggles()
-	_say(["好，那我就一直待着啦～", "嗯，我少走动一点。",
-		"行，偶尔溜达一下～", "好，我多走走～"][idx])
-
-## 把 move_chance 归到四档里的最近一档，给菜单勾选用
-func _move_chance_index() -> int:
-	var best := 0
-	var best_d := 1e9
-	for i in MOVE_CHANCE_STEPS.size():
-		var d := absf(move_chance - MOVE_CHANCE_STEPS[i])
-		if d < best_d:
-			best_d = d
-			best = i
-	return best
-
 ## 她想说一句（菜单「让她主动说一句」）。逻辑在模块里
 func _ask_proactive() -> void:
 	_proactive.ask()
@@ -1823,22 +1839,6 @@ func _check_self_talk(delta: float) -> void:
 ## 留这个方法名比让探针去抠模块内部稳
 func _proactive_due_now() -> void:
 	_proactive.timer = 0.0
-
-func _toggle_peek() -> void:
-	_peek_on = not _peek_on
-	# 从关到开时别拿停用期间攒下的旧倒计时去催她，重新数
-	_peek_timer = maxf(1.0, peek_every_min) * 60.0
-	_save_chat_config()
-	_sync_menu_toggles()
-	_say("偷看屏幕：%s" % ("开" if _peek_on else "关"))
-
-func _toggle_camera() -> void:
-	_camera_on = not _camera_on
-	# 从关到开时重新数，别拿停用期间攒下的旧倒计时去催她
-	_camera_timer = maxf(1.0, camera_every_min) * 60.0
-	_save_chat_config()
-	_sync_menu_toggles()
-	_say("摄像头：%s" % ("开" if _camera_on else "关"))
 
 ## 主动说话时先瞥一眼屏幕（默认开）。关掉她就只凭记忆起话头 ——
 ## 记忆是过去的事，主动开口就容易"和你正在干的不一样"（2026-09-27）
@@ -1867,11 +1867,6 @@ func _setup_quick() -> void:
 	# 点了某句候选 = 主人说了这句话，走正常发送链路（所以它也会进记忆）
 	_quick.picked.connect(_submit_chat)
 
-## 快速回答按钮的屏幕矩形（没显示时是空的）。穿透区要把它算进去，见 pet_pointer.gd。
-## 留这层薄壳是**有意的**：pointer 模块不必认识"快速回答"这块 —— 接口面越窄越不容易缠住
-func quick_clickable_rect() -> Rect2:
-	return _quick.clickable_rect() if _quick != null else Rect2()
-
 ## 给她"编候选"那条喂的上下文：最近几轮对话。
 ## **把她刚说的那句去掉** —— 提示词里已经单独给了她那句话，重复一次只会让模型更糊。
 ## 没有上下文时，模型编出来的话经常接不上她刚说的那句（"选项不对"就是这么来的）
@@ -1885,11 +1880,6 @@ func _quick_context(reply: String) -> String:
 			continue
 		tail.append(s)
 	return "\n".join(tail)
-
-## 有东西出现/消失，下一帧得重算"可点区域"（快速回答那列按钮、气泡都走这里）。
-## 抽成一个方法是为了不让模块直接去摸 _passthrough_set 这个内部标记
-func _invalidate_passthrough() -> void:
-	_passthrough_set = false
 
 func _open_chat() -> void:
 	_chat_panel_mod.open()
@@ -1980,14 +1970,33 @@ func _on_vision_stream_ended() -> void:
 func _apply_chat_config() -> void:
 	if _chat != null:
 		_chat.configure(chat_url, chat_access_key, chat_model)
+		_chat.configure_worker(worker_url, worker_model)
+		# 本地小模型给回复长度硬顶（≈60 字）：小模型对"说短点"的软提示不敏感
+		_chat.max_reply_tokens = 90 if chat_url.contains(LOCAL_AI_MARK) else 0
 		_chat.probe_now()   # 主动说话要先知道服务在不在，不等定时器
 	if _vision != null:
 		_vision.configure(vision_url, vision_key(), vision_model)
 		_vision.probe_now()
 	# 快速回答那条用**文本模型**（它编的是纯文字，和看图无关）。
-	# 单独配了 quick_model 就用它 —— 这条最怕慢（会思考的模型二十几秒才回来）
-	_quick.configure(chat_url, chat_access_key,
-		quick_model if quick_model.strip_edges() != "" else chat_model)
+	# 单独配了 quick_model 就用它（按原样走聊天后端，单独指的模型优先级最高）；
+	# 没单独配：本地档把"编候选"也交给工位小模型 —— 候选编的是**主人可能接的话**，
+	# 不是她的台词，人设风险低；洗不出来还有本地兜底那组（按钮不会消失）。
+	# 云端档 worker 空 = 跟聊天后端，行为与从前一致
+	if quick_model.strip_edges() != "":
+		_quick.configure(chat_url, chat_access_key, quick_model)
+	else:
+		_quick.configure(chat_url, chat_access_key, chat_model,
+			worker_url, worker_model)
+	# 快速回答也收紧长度：工位/聊天只要有一个是本地模型就给硬顶
+	# （不能拿 LOCAL_AI_MARK 判 worker —— 那个标记是 8530，工位是 8531）
+	_quick.max_reply_tokens = 90 if (chat_url.contains(LOCAL_AI_MARK)
+		or worker_url.strip_edges() != "") else 0
+	# 日记那条也单开一条连接（理由见 pet_diary_flow.gd 头部：ask_once 靠 _task 认领，
+	# 借记忆那条会互相覆盖）。它用的是**文本模型**，一天最多一个请求；
+	# 工位跟着一起配（日记也是后台杂活，分工给小模型）
+	if _diary_flow != null:
+		_diary_flow.configure(chat_url, chat_access_key, chat_model,
+			worker_url, worker_model)
 	_refresh_persona()
 
 # ------------------------------------------------------------ 长期记忆（pet_memory.gd + pet_memory_flow.gd）
@@ -2129,12 +2138,71 @@ func _on_ai_settings_saved(d: Dictionary) -> void:
 	chat_model = String(d.get("model", chat_model))
 	vision_url = String(d.get("vision_url", vision_url))
 	vision_model = String(d.get("vision_model", vision_model))
+	# 选的是本地小模型：后台杂活（记忆/日记）顺手分工给第二实例的 0.8B（CPU 跑，
+	# 不占聊天那份显存）；切回云端档就不分工（worker 空 = 跟聊天同一个后端）
+	if chat_url.contains(LOCAL_AI_MARK):
+		worker_url = "http://127.0.0.1:8531/v1"
+		worker_model = "qwen3.5-0.8b"
+	else:
+		worker_url = ""
+		worker_model = ""
 	_save_chat_config()
 	if _chat == null:
 		_setup_chat()      # 之前没开聊天的话，现在开起来
 	else:
 		_apply_chat_config()
 	_say("AI：%s" % chat_model)
+	# 选的是本地小模型但探活还没绿 → 后台把 llama-server 拉起来（提示见下个函数）
+	if chat_url.contains(LOCAL_AI_MARK):
+		_ensure_local_ai_started()
+
+## 本地小模型（llama.cpp）的约定：端口 8530；启动器在 d:\dsh\local_ai\（StartLocalAI.bat）。
+## 它会起一个**最小化**的命令框跑 llama-server（想停就关那个框），
+## 自己最多等 48 秒探活后退出。端口/档位改了要跟着改这两处 + 菜单预设（pet_menu.PROVIDERS）
+const LOCAL_AI_MARK := "127.0.0.1:8530"
+const LOCAL_AI_BAT := "D:\\dsh\\local_ai\\StartLocalAI.bat"
+## 后台启动等待中（连上/超时给过提示就清掉；期间重复保存不重复拉起）
+var _local_launching := false
+
+## 「选完本地就能用」：探活红着就隐藏窗口跑启动器，起来/超时各给一句提示。
+## 服务本来就在跑就什么都不做
+func _ensure_local_ai_started() -> void:
+	if _local_launching:
+		return
+	_local_launching = true
+	if _chat == null:
+		_local_launching = false
+		return
+	# ⚠️ 刚 _apply_chat_config 发出去的探活还没回来，backend_reachable() 还是
+	# **旧地址**的值 —— 直接判会把"云端还连着"误当成"本地已就绪"。
+	# 探活对死端口 <1s 就失败、对活服务 <100ms，等 1.5s 足够它落地
+	await get_tree().create_timer(1.5).timeout
+	if _chat.backend_reachable():
+		_local_launching = false
+		return
+	if not FileAccess.file_exists(LOCAL_AI_BAT):
+		_say("本地小模型还没装呢（找不到 %s）" % LOCAL_AI_BAT)
+		_local_launching = false
+		return
+	OS.create_process("powershell", PackedStringArray([
+		"-NoProfile", "-Command",
+		"Start-Process -FilePath '%s' -WindowStyle Hidden" % LOCAL_AI_BAT,
+	]))
+	_say("我正在后台启动本地小模型，十几秒就好…")
+	var deadline := Time.get_ticks_msec() + 90000   # 启动器自己最多等 48s，这里再放宽一倍
+	var next_probe := 0
+	while Time.get_ticks_msec() < deadline:
+		if _chat.backend_reachable():
+			_local_launching = false
+			_say("本地小模型连上啦～")
+			return
+		# 模型加载要十几秒；干等定时探活会慢一拍，每 3 秒主动探一次
+		if Time.get_ticks_msec() >= next_probe:
+			_chat.probe_now()
+			next_probe = Time.get_ticks_msec() + 3000
+		await get_tree().process_frame
+	_local_launching = false
+	_say("本地模型好像没起来，帮我看看 D:\\dsh\\local_ai\\server.log？")
 
 ## 菜单 →「重新连接 AI 服务」：不重建客户端，按当前设置重连并探活
 func _reconnect_ai() -> void:
@@ -2149,15 +2217,16 @@ func _reconnect_ai() -> void:
 
 # ------------------------------------------------------------------ UI 面板
 
-## 有"吃键盘 / 吃点击"的面板开着吗（聊天框 / AI 设置面板 / 设置面板 / 工作台）
+## 有"吃键盘 / 吃点击"的面板开着吗（聊天框 / AI 设置面板 / 设置面板 / 工作台 / 日记）
 func _ui_panel_open() -> bool:
 	return _chat_open \
 		or (_menu_mod != null and _menu_mod.ai_panel_visible()) \
 		or (_menu_mod != null and _menu_mod.name_panel_visible()) \
 		or (_settings_mod != null and _settings_mod.is_open()) \
-		or (_workbench != null and _workbench.is_open())
+		or (_workbench != null and _workbench.is_open()) \
+		or (_diary_ui != null and _diary_ui.is_open())
 
-## 面板之外点一下 = 收起来。三个一起管，免得关了一个另一个还挂着
+## 面板之外点一下 = 收起来。几个一起管，免得关了一个另一个还挂着
 func _close_panels() -> void:
 	_close_chat()
 	if _menu_mod != null:
@@ -2167,8 +2236,11 @@ func _close_panels() -> void:
 		_settings_mod.close()
 	if _workbench != null:
 		_workbench.close()
+	if _diary_ui != null:
+		_diary_ui.close()
 
-## 点在面板里面吗？三个都要算上，否则点设置面板会被当成"点在空白处"而被收掉
+## 点在面板里面吗？每一个都要算上，否则点面板会被当成"点在空白处"而被收掉。
+## **新加面板时必须来这里加一行** —— 漏了的表现是"点自己面板上的东西，面板先没了"
 func _point_in_any_panel(pos: Vector2) -> bool:
 	if _chat_panel != null and _chat_panel.visible \
 			and _chat_panel.get_global_rect().has_point(pos):
@@ -2178,6 +2250,8 @@ func _point_in_any_panel(pos: Vector2) -> bool:
 	if _menu_mod != null and _menu_mod.point_in_name_panel(pos):
 		return true
 	if _settings_mod != null and _settings_mod.point_inside(pos):
+		return true
+	if _diary_ui != null and _diary_ui.point_inside(pos):
 		return true
 	return false
 
@@ -2213,11 +2287,16 @@ func _send_first(prompt: String, shot: String = "") -> bool:
 	_reply_opts_mode = true
 	_reply_raw = ""
 	_stream_shown = ""
+	# 本地小模型**不带选项协议尾**：4B 经常写不出 %% 格式 —— 或者写成全角 ％％、
+	# 或者干脆把候选当正文念出来（用户实测：偷看/摄像头每轮都带这个尾巴，
+	# 气泡里全是「无意义字符」）。按钮不靠它：split_options 拆不到候选时，
+	# pet_quick 自己的兜底路子会顶上（本地候选组 → 必要时再问模型）
+	var tail := "" if chat_url.contains(LOCAL_AI_MARK) else PROMPT_OPTIONS_TAIL
 	var ok := false
 	if shot != "" and _vision != null:
-		ok = _vision.send(prompt + PROMPT_OPTIONS_TAIL, shot)
+		ok = _vision.send(prompt + tail, shot)
 	elif _chat != null:
-		ok = _chat.send(prompt + PROMPT_OPTIONS_TAIL)
+		ok = _chat.send(prompt + tail)
 	if not ok:
 		_reply_opts_mode = false     # 没发出去就别留着这个标记，否则下一次回复会被误拆
 	return ok
@@ -2242,6 +2321,63 @@ func _setup_mood() -> void:
 	_peek.setup(self)
 	# 短期记忆（她说完、没人接的那些）。接线点在 _note_reply / _soothe / _on_sulk_timeup
 	_shortterm.setup(self)
+	# 体谅（"你在忙吧，我先不吵你"）：和情绪并列的第二条解读路，见 pet_considerate.gd。
+	# **必须在这儿建**：_setup_chat 之后 pet_proactive 的每帧门禁就要问它
+	_considerate = PetConsiderate.new()
+	_considerate.setup(self)
+
+# -------------------------------------------------- 她自己的日记（见 scripts/body/pet_diary.gd）
+
+## 建日记并接线。**挨着 _setup_mood 放是有意的**：日记记的"她当时什么心情"要读 _mood，
+## 而且"心情变了"那一下就是它的一个拍子来源（见 _on_mood_changed）。
+##
+## 它和长期记忆是**两条独立的路**：记忆管"给模型用的事实"（不建就不会被检索到），
+## 日记管"给你看的流水"。所以各自的开关也是分开的（diary_enabled / memory_enabled）。
+func _setup_diary() -> void:
+	_diary = PetDiary.new()
+	_diary.setup(self)
+	_diary.load()
+	# 第一次见面那天：只记一次，之后永远从它算"认识多少天"
+	if _diary.first_day == "":
+		_diary.first_day = _today_stamp()
+		_diary.save()
+	_diary_flow = PetDiaryFlow.new()
+	_diary_flow.setup(self)
+	if OS.is_debug_build():
+		print("[PetDeek] 日记：%s（%d 天有记录）" % [_diary.stats_line(), _diary.days.size()])
+
+## "YYYY-MM-DD"。宿主只在这一处算日期字符串（日记模块自己也有一个，但它归模块）
+func _today_stamp() -> String:
+	var dt := Time.get_datetime_dict_from_system()
+	return "%04d-%02d-%02d" % [int(dt["year"]), int(dt["month"]), int(dt["day"])]
+
+## 给日记记一个拍子。**所有事件点都走这一个口子** —— 模块名 / 白名单校验都在
+## pet_diary.note() 里，宿主这边只是转发（并检查总开关）。
+## 写成方法而不是让各处直接调 _diary.note()：省得每个调用点都记得判开关
+func _diary_note(kind: String) -> void:
+	if not diary_enabled or _diary == null:
+		return
+	if _diary.note(kind):
+		_diary.save()
+
+## 菜单 / 面板 →「我们的日记」
+func _open_diary() -> void:
+	if _diary_ui == null:
+		return
+	_close_panels()
+	# 顺手把气泡收掉：面板虽然已经改成不透明了，但气泡的淡出 tween 还在跑，
+	# 那 1.8 秒里它会压在最上层闪一下（实测截图里能看到那句话浮在日记上面）。
+	# 直接改 Label —— pet_bubble 模块没有 hide()，而且它的 tween 会自己收尾
+	_bubble.visible = false
+	# 每次打开重算一遍统计：连续天数 / 认识多少天 是**按打开这一刻**算的
+	_diary_ui.refresh()
+	_diary_ui.open()
+
+## 面板上「让她补写今天」被点了。把 flow 的回话显示在面板上
+func _on_diary_write_requested() -> void:
+	if _diary_flow == null or _diary_ui == null:
+		return
+	_diary_ui.set_status(_diary_flow.write_now_with_ai())
 
 ## 连着被冷落到顶（pet_mood.SULK_MAX 次）：她**不主动开口了**。
 ## 这里只说最后一句 —— 之后的闭嘴由 pet_proactive.tick 问 _mood.is_muted() 来管。
@@ -2255,7 +2391,16 @@ func _soothe_her() -> void:
 ## 被理了就消气。聊天、摸头、喂食都算 —— 别让她记仇记到没人愿意搭理她。
 ## 薄壳：状态在 pet_mood.gd（这个函数好几处都在调，留着它比让各处去摸 _mood 干净）
 func _soothe() -> void:
+	# 日记：只在**她本来在闹情绪**时才记这一笔 —— 平常被摸一下也会走到这儿，
+	# 那不是"被哄好了"，记进日记会变成每天好几次"他哄我了"
+	var was_upset: bool = _mood.is_upset()
 	_mood_ui.soothe()
+	# 体谅那条：他一理她就**立刻回来，不记仇**（这是它和生闷气的分界 —— 那条要哄）。
+	# 放在 _mood_ui.soothe() 之后：两条都要走，互不影响
+	if _considerate != null:
+		_considerate.note_answered()
+	if was_upset:
+		_diary_note(PetDiary.BEAT_SOOTHE)
 
 ## 从一串台词里随手挑一句。模块里的台词组也走它，省得每处都写一遍下标
 ## （pet_touch 也通过 _host._pick_line 走到这里，所以留壳）
@@ -2272,13 +2417,27 @@ var _touch := PetTouch.new()
 ## 被摸到了（部位判定见 pet_pointer 的 classify_touch / 分寸见 pet_mood.gd）
 ## 壳：生闷气时点击弹选择框那套在 pet_mood_ui.gd
 func _touch_react(part: String) -> void:
+	# 被摸 = 她被打断了"躺着歇着"：显式起身（理由见 _wake_from_rest）
+	_wake_from_rest()
 	_mood_ui.touch_react(part)
+	# 日记：只有**亲昵部位**（头 / 手 / 腿 / 身体）算"被摸了摸头"。
+	# 摸到不该摸的地方（chest）不算 —— 日记里不该出现"今天被摸了胸"，
+	# 那是骚扰记录不是陪伴记录。判据和 pet_mood 里"哪条算亲昵"是同一个：
+	# chest 在那边走 attack 分支（明确不乐意 + 不消气），这里对应地跳过
+	if part != "chest":
+		_diary_note(PetDiary.BEAT_PET)
 
 # -------------------------------------------------- 心情 → 动作（2026-10-01）
 
-## 心情变了 → 播一个"能体现这个情绪"的动作（心情表与实现都在 pet_mood_ui.gd）
+## 心情变了 → 播一个"能体现这个情绪"的动作（心情表与实现都在 pet_mood_ui.gd），
+## 顺手给日记记一个拍子 —— 心情的转变就是"这天发生了什么"里最值得留的那种
 func _on_mood_changed(m: int) -> void:
 	_mood_ui.on_mood_changed(m)
+	match m:
+		PetMood.Mood.HAPPY: _diary_note(PetDiary.BEAT_HAPPY)
+		PetMood.Mood.ANGRY: _diary_note(PetDiary.BEAT_ANGRY)
+		PetMood.Mood.SAD: _diary_note(PetDiary.BEAT_SAD)
+		_: pass
 
 ## 播一个"持续姿势"：静态姿势动画**循环播** = 一直保持那个姿势（伤心蜷缩）。
 ## 和 _play_action 的区别：那个是"播一下就回待机"，这个是"保持到下一次动画"。
@@ -2286,6 +2445,9 @@ func _on_mood_changed(m: int) -> void:
 func _play_pose_loop(name: String) -> void:
 	if name == "" or not _has.has(name):
 		return
+	# 这个壳也直接进 _anim（绕开 _play），所以同样要自己清"躺着"那个标记。
+	# 不然"躺下之后心情变悲伤"会被 tick_sit 判成"她还躺着"而不给蜷缩姿势
+	_resting = false
 	var a := _anim.get_animation(name)
 	if a != null and a.loop_mode != Animation.LOOP_LINEAR:
 		a.loop_mode = Animation.LOOP_LINEAR
@@ -2405,6 +2567,8 @@ func _load_chat_config() -> void:
 	chat_model = String(cfg.get_value("ai", "model", chat_model))
 	vision_url = String(cfg.get_value("ai", "vision_url", vision_url))
 	vision_model = String(cfg.get_value("ai", "vision_model", vision_model))
+	worker_url = String(cfg.get_value("ai", "worker_url", worker_url))
+	worker_model = String(cfg.get_value("ai", "worker_model", worker_model))
 
 func _save_chat_config() -> void:
 	var cfg := ConfigFile.new()
@@ -2423,6 +2587,8 @@ func _save_chat_config() -> void:
 	cfg.set_value("ai", "model", chat_model)
 	cfg.set_value("ai", "vision_url", vision_url)
 	cfg.set_value("ai", "vision_model", vision_model)
+	cfg.set_value("ai", "worker_url", worker_url)
+	cfg.set_value("ai", "worker_model", worker_model)
 	cfg.set_value("ai", "vision_key", "")
 	cfg.save(CHAT_CONFIG)
 	PetSecret.store(chat_access_key, vision_access_key)

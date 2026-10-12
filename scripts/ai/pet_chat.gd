@@ -122,9 +122,45 @@ var _probe := Probe.new()
 const Once := preload("res://scripts/ai/net/pet_once.gd")
 var _bg := Once.new()
 
+## 后台杂活的**专用工位**（记忆抽取 / 摘要 / 日记）：可以指向一个小模型
+## （比如本机第二实例的 0.8B，CPU 跑不占聊天那份显存）。小模型只管"提取并提交"，
+## 记忆的**使用**仍由聊天模型在对话里完成 —— 分工见用户 2026-10-11 的协同设计。
+## 空 = 跟聊天同一个后端（云端用户不用配这个，行为与从前完全一致）
+var worker_url: String = ""
+var worker_model: String = ""
+var _w_host := ""
+var _w_port := 0
+var _w_tls := false
+var _w_base := ""
+var _worker := Once.new()
+
+## 配工位。url 空 = 不分工（ask_once 继续走聊天后端）
+func configure_worker(p_url: String, p_model: String) -> void:
+	worker_url = p_url.strip_edges()
+	worker_model = p_model.strip_edges()
+	if worker_url == "":
+		_w_host = ""
+		_w_port = 0
+		_w_tls = false
+		_w_base = ""
+		return
+	var u := Net.parse_url(worker_url)
+	_w_host = String(u["host"])
+	_w_port = int(u["port"])
+	_w_tls = bool(u["tls"])
+	_w_base = String(u["base_path"])
+
+## 工位是否已配置（ask_once 分流看它）
+func has_worker() -> bool:
+	return _w_host != ""
+
 func _init() -> void:
 	_bg.got.connect(_on_bg_got)
 	_bg.failed.connect(_on_bg_failed)
+	# 工位那条共用同一组收尾处理：ask_once 一次只发一边（发送前查过两边的 busy），
+	# 不会出现两条同时回来互相认领的情况
+	_worker.got.connect(_on_bg_got)
+	_worker.failed.connect(_on_bg_failed)
 	# 探活那块的"可达值变了"转成自己的 reachable 信号 —— **对外接口一个字不变**
 	# （漏了这一句的话：探活照样跑、backend_reachable() 也对，但宿主的托盘 / 菜单那行
 	#   "AI 服务：联系不上"永远不刷新。probe_offline 就是专门抓这个的，实测抓到过）
@@ -246,6 +282,10 @@ var no_think: bool = true
 ## 不带就没有那两个数，但换服务商时不会被它挡在门外 —— 后端回 400 会自动摘掉（见 _note_unsupported）
 var send_usage: bool = true
 
+## 回复长度的**硬上限**（token，0 = 不限、走后端默认）。宿主在本地小模型档给 90
+## （≈60 字）—— 小模型对"说话短一点"这种软提示不敏感，会写小作文；直接掐断最可靠
+var max_reply_tokens: int = 0
+
 func is_busy() -> bool:
 	# **待重发也算忙**（_retry.pending()）。429 之后旧连接已经被 cancel 掉了，
 	# 那 2.5 秒里 _sse.busy() 是 false —— 不算忙的话：
@@ -297,7 +337,7 @@ func send(message: String, image_data: String = "") -> bool:
 		ctx = String(context_provider.call(message))
 	var msgs := compose_messages(system_prompt, _history, ctx, message, image_data)
 	# 请求体的形状（含"让流式也带 usage""关思考"两处刻意的）在 pet_net.gd 里
-	var body := Net.chat_body(model, msgs, no_think, send_usage)
+	var body := Net.chat_body(model, msgs, no_think, send_usage, max_reply_tokens)
 	# JSON.stringify().to_utf8_buffer()：千万别用 to_ascii_buffer，中文会变成 ?
 	var payload: PackedByteArray = JSON.stringify(body).to_utf8_buffer()
 	# 记一份原样请求：撞上 429 要原样重发（见 _remember_request）
@@ -337,9 +377,21 @@ func cancel() -> void:
 ## 给小了正文就是空的（调用方会收到"模型返回是空的"）。反正这些都是免费/不计量的模型，
 ## 上限给宽一点，真正花钱的是**输入**（前缀缓存那里）
 func ask_once(system: String, user: String, max_tokens: int = 2000) -> bool:
-	if not enabled or _bg.busy():
+	if not enabled or _bg.busy() or _worker.busy():
 		return false
-	var payload := Once.build_body(model, system, user, max_tokens, no_think)
+	# 配了工位就走它：记忆/日记这类后台活分给小模型（便宜快、不占聊天的算力），
+	# 聊天模型只管对话和撑人设。工位那条**不参与 429 重发**——本机后端没有 429，
+	# 云端用户根本不配工位，所以原来的重发记账只留在聊天后端那条路上
+	var use_worker := _w_host != ""
+	var host := _w_host if use_worker else _host
+	var port := _w_port if use_worker else _port
+	var tls := _w_tls if use_worker else _tls
+	var base := _w_base if use_worker else _base_path
+	var mdl := worker_model if (use_worker and worker_model != "") else model
+	var payload := Once.build_body(mdl, system, user, max_tokens, no_think)
+	if use_worker:
+		return _worker.start(host, port, base + "/chat/completions",
+			_headers("application/json", "application/json"), payload, tls)
 	# 记一份原样请求：撞上 429 要原样重发（见 _remember_request）
 	_remember_request("once", _base_path + "/chat/completions",
 		_headers("application/json", "application/json"), payload, _tls)
@@ -347,10 +399,11 @@ func ask_once(system: String, user: String, max_tokens: int = 2000) -> bool:
 		_headers("application/json", "application/json"), payload, _tls)
 
 func once_busy() -> bool:
-	return _bg.busy()
+	return _bg.busy() or _worker.busy()
 
 func _step_once() -> void:
 	_bg.tick()          # 连接 / 超时 / 收字节都在模块里
+	_worker.tick()      # 工位那条同理（谁在跑推进谁，另一条 IDLE 时 tick 是空操作）
 
 ## 响应回来了：**先看是不是"模型太挤"** —— 是的话原样重发，不能先报失败：
 ## 调用方一收到失败就把任务名清掉了，重试回来的结果就没人要了（所以这段留在这儿，

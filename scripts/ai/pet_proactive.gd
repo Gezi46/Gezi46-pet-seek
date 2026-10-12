@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 「她自己开口」那一条 —— 计时、四档频率、开口前的门禁、以及真正把话说出去。
 ## （2026-09-29 第③条：用户要"主动对话单做模块"，顺带把短期记忆的消费点收进来）
 ##
@@ -128,6 +125,13 @@ func tick(delta: float) -> void:
 	if host._mood.is_muted():
 		reschedule()
 		return
+	# 正在体谅（"你在忙吧，我先不吵你"）：**第二道门禁**，和上面那道并列而不是替代。
+	# 为什么不并进 is_muted：那是"生气到不想开口"，这条是"没生气、但决定让路"——
+	# 两条的触发、时长、**解除方式**都不同（一个要哄，一个到点自己回来），
+	# 见 scripts/body/pet_considerate.gd 文件头那张对照表
+	if host._considerate != null and host._considerate.is_on():
+		reschedule()
+		return
 	# 假死：联系不上时她不自己开口 —— 本来这条路也会退本地台词，
 	# 但那样她等于一直在"假装聊天"，断网的时候还是安静点像话
 	if host._offline():
@@ -161,6 +165,10 @@ func ask() -> void:
 		host._say("我现在联系不上外面…连不上就不瞎想了。")
 		return
 	host._begin_stream_bubble()
+	# 她**真的开口了**才算一次（前面那几条 return 都不算：连不上后端不是"开口"）。
+	# 连续 N 次没人接就会进"体谅"——见 scripts/body/pet_considerate.gd
+	if host._considerate != null:
+		host._considerate.note_spoke(Time.get_ticks_msec())
 	host._last_origin = "proactive"     # 记忆：这轮是她自己找的话
 	# 概率性"先瞥一眼屏幕"（默认开）：拿着画面找话题，比凭记忆起话头靠谱得多 ——
 	# 用户 2026-09-27 要求把偷看绑到主动说话上。抓不到图就退回纯文字那条，流程不变

@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 探活：定期打一下 `{base}/models`，判断"后端到底通不通"。
 ##
 ## 从 pet_chat.gd 搬出来（作业单 B1.4）。它**自带一条连接** —— 和聊天、后台任务那两条

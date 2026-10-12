@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 单实例保护 + "我还在"心跳（2026-09-29 用户报"我退出了，你那边却说没退"）。
 ##
 ## 两个毛病一起治：

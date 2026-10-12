@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 验证「隐藏任务栏图标」和「开机自启动」真的生效。
 ##
 ## 关键：**不只看引擎里的 flag**。`DisplayServer.window_get_flag()` 只能说明

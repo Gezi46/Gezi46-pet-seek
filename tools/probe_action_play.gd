@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 强制播放一个长动画（走的是 _begin_move 里选到 emote 的同一条路），
 ## 然后记录每一次"动画切换"和 animation_finished 信号，看是谁在中间把它切走的。

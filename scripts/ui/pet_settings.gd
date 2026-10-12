@@ -70,6 +70,18 @@ const SECTIONS: Array = [
 				"confirm": true, "hint": "档案卡 + 工作记忆 + 所有记忆条目一起清掉，不能撤销"},
 			{"k": "cmd_memory_folder", "t": "button", "label": "打开记忆文件所在文件夹",
 				"hint": "想看看她到底记了些什么，直接打开那个文件夹里的 pet_memory.json"},
+			# ---- 日记（和长期记忆分开：那个是给模型用的事实，这个是给你看的流水）
+			{"k": "diary_enabled", "t": "check", "label": "她自己的日记",
+				"hint": "把你们之间发生的事按天记下来，右键「我们的日记…」能翻。关掉 = 不记也不写"},
+			{"k": "diary_ai", "t": "check", "label": "让她用模型写日记",
+				"hint": "一天最多一次请求，把当天的拍子写成更自然的一段话。关掉 = 用本地模板拼（零成本、离线可用）"},
+			{"k": "diary_ready_beats", "t": "int", "label": "攒够几件事才写",
+				"min": 1.0, "max": 12.0, "step": 1.0,
+				"hint": "一天里的拍子（被摸 / 聊天 / 喂食 / 闹别扭…）攒到这么多条，她才动手写那天"},
+			{"k": "cmd_diary", "t": "button", "label": "翻开我们的日记…",
+				"hint": "和右键菜单里那项是同一个地方"},
+			{"k": "cmd_clear_diary", "t": "button", "label": "清空日记",
+				"confirm": true, "hint": "把记下的日子全清掉。「认识多少天」也会从今天重新算，不能撤销"},
 		],
 	},
 	{

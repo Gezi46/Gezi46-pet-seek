@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 一条连接的生命周期：连 → 发 → 收（HTTPClient 状态机）。
 ##
 ## 原先它是 pet_chat.gd 里的**内部类**，2026-09-23 按作业单 B1.1 搬出来单独一个文件
@@ -121,5 +118,14 @@ func poll() -> void:
 		HTTPClient.STATUS_DISCONNECTED:
 			phase = DONE
 		_:
-			phase = FAILED
-			error = "连接失败（status=%d）" % c.get_status()
+			# ⚠️ llama.cpp 的 llama-server（本地小模型后端，2026-10-11 接入时实测）在
+			# SSE 流收尾时不等 keep-alive、直接关 TCP —— 实测全程 1291 字节都收到了，
+			# 底层状态却从 BODY 直接翻成"连接失败"，而不是 DISCONNECTED ✗。
+			# 此时响应码早已拿到、body 也进过 pending，按"收完"算 ✓（上层 _finish
+			# 会把攒到的正文当回复发出去；真·中途断流最坏是半截回复，好过整轮报错 ✗）。
+			# 连接/握手阶段挂掉（连不上、被拒）不走这条 —— 那时 phase 还没到 READING ✓
+			if phase == READING and code != 0:
+				phase = DONE
+			else:
+				phase = FAILED
+				error = "连接失败（status=%d）" % c.get_status()

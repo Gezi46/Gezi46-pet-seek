@@ -90,10 +90,6 @@ func apply_window_size() -> void:
 	pet.get_node("Shadow").position = Vector3(center.x, 0.01, center.z)
 	dock_to_home()
 
-	# 机位和窗口尺寸都变了，可点区域必须重算一次
-	pet._passthrough_set = false
-	pet._update_passthrough_region()
-
 
 ## 启动 / 改窗口大小时，把窗口停到"家"的位置
 func dock_to_home() -> void:

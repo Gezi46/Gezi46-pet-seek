@@ -109,8 +109,11 @@ func run() -> void:
 		"缓存前缀：一轮 3 条（人设 / 上下文 / 这一句），下一轮 5 条（多了上一轮）→ %d / %d" % [m1.size(), m2.size()])
 	_check(String(m1[0]["content"]) == String(m2[0]["content"]) and stable.length() >= 900,
 		"缓存前缀：两轮的系统提示词**逐字相同**（%d 字）" % stable.length())
-	_check(String(m1[1]["role"]) == "system" and String(m2[3]["role"]) == "system",
-		"缓存前缀：每轮的上下文是单独一条、位置在历史之后")
+	# ⚠️ 2026-10-11 起上下文是 **user** 角色（曾是 system）：Qwen3.5 的 Jinja 模板
+	# 强制 system 必须第一条，历史后面跟 system 直接 HTTP 500 —— 改 user 后位置不动，
+	# 前缀缓存照样命中（见 pet_net.messages 里的说明）
+	_check(String(m1[1]["role"]) == "user" and String(m2[3]["role"]) == "user",
+		"缓存前缀：每轮的上下文是单独一条、位置在历史之后（user 角色，见 pet_net.messages）")
 	_check(stable.find("【现在】") < 0 and stable.find("关于主人") < 0,
 		"缓存前缀：时间 / 记忆**不在**系统提示词里（它们每轮都变，放进去缓存就断）")
 	_check(ctx1.find("【现在】") >= 0 and ctx1 != ctx2,

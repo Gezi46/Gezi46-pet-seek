@@ -2,15 +2,16 @@
 # Copyright (C) 2026 Gezi46
 #
 extends RefCounted
-## 鼠标 / 互动：悬停检测、点击穿透区域、拖拽、摸头 / 喂食 / 睡觉 / 跳跃反应
+## 鼠标 / 互动：悬停检测、拖拽、摸头 / 喂食 / 睡觉 / 跳跃反应
 ## （由 desktop_pet.gd preload 为 PetPointer）。
 ##
 ## 方法名保留主脚本时代的下划线命名：主脚本留 _input（虚函数转发）、
-## _update_passthrough_region（PetWindow 回调）、_begin_drag / _end_drag（探针）
-## 四个门面，其余由 _process / 菜单直接调 pointer._xxx。
-
-## 可点区域变化的死区（像素）：小于它就懒得去重建窗口区域，避免每帧都动窗口
-const PASSTHROUGH_DEADZONE := 8.0
+## _begin_drag / _end_drag（探针）三个门面，其余由 _process / 菜单直接调 pointer._xxx。
+##
+## 2026-10-05：原来还有第四个门面 `_update_passthrough_region`（把窗口的可点区域
+## 挖成角色轮廓，让空白处点得到后面的窗口）—— 那套连着自己的 `PASSTHROUGH_DEADZONE`
+## 和 `_char_screen_polygon` 一起删了：它挂在 `mouse_passthrough_enabled` 上，
+## 而那个开关一直默认关着，等于一大块没人走过的死代码
 
 ## 宿主（桌宠根节点）：读它的检查器参数 / 相机节点 / 内部状态
 var pet: Node3D = null
@@ -66,93 +67,10 @@ func _update_hover() -> void:
 	var want_catch: bool = _char_screen_rect().grow(pet.catch_padding).has_point(mouse)
 	pet._hover = want_catch
 
-	# 关键：不要在这里切换"整窗可点 / 整窗穿透"。
-	# window_set_mouse_passthrough 的参数是"接受鼠标事件的区域"，
-	# 每次调用都会让 Windows 重建窗口区域，鼠标碰到角色时闪的那一下就是这么来的。
-	# 改成始终把区域固定成角色矩形，只在包围盒真的变化时才更新 —— 鼠标进出角色
-	# 完全不动窗口，空白处照样穿透。
-	_update_passthrough_region()
-
 	if want_catch != pet._catching:
 		pet._catching = want_catch
 		Input.set_default_cursor_shape(
 				Input.CURSOR_POINTING_HAND if pet._catching else Input.CURSOR_ARROW)
-
-## 把窗口的"可点区域"固定成角色轮廓的凸包，区域之外一律穿透到后面的窗口。
-##
-## 语义已经实测确认过：window_set_mouse_passthrough 的参数就是"窗口存在的区域"
-## —— 传 (100,100)-(200,200) 给 Windows，查出来的窗口 region 正好是那一块。
-## 所以传角色轮廓 = 轮廓内可点、其余穿透。
-##
-## 之前那套"整窗可点 / 整窗穿透"来回切的做法有两个毛病：每次切换都会让 Windows
-## 重建窗口区域（鼠标碰到角色时闪的那一下），而且非悬停时传的是整窗矩形，
-## 按上面的语义那仍然是整窗可点 —— 也就是穿透其实一直没生效。
-##
-## 死区是为了不让呼吸动画每帧都去重建窗口区域。
-func _update_passthrough_region() -> void:
-	if not pet.mouse_passthrough_enabled:
-		return
-	if pet._ui_panel_open():
-		# 聊天框 / AI 设置面板都是实心的，得整窗接收点击，否则面板自己都点不动
-		return
-	if pet._use_opaque():
-		# 卡片形态是一张实心矩形，整窗都该接收点击，不需要挖穿透区
-		if not pet._passthrough_set:
-			pet._passthrough_set = true
-			DisplayServer.window_set_mouse_passthrough(PackedVector2Array())
-		return
-	var poly: PackedVector2Array = _char_screen_polygon()
-	if poly.size() < 3:
-		return
-	var bound := Rect2(poly[0], Vector2.ZERO)
-	for i in range(1, poly.size()):
-		bound = bound.expand(poly[i])
-	# 快速回答按钮露出来时，把它也算进"可点区域"（取并集的外框矩形）。
-	# 不做这一步的话，按钮飘在角色轮廓之外，点上去会直接穿到后面的窗口 ——
-	# 那按钮就成了个摆设（这就是这块 UI 唯一的坑）。
-	# （锁按钮那套已改成按 GPU 自动透视，见 desktop_pet._tick_gpu，这里不再管它）
-	var extra: Rect2 = pet.quick_clickable_rect()
-	if extra.size.x > 0.0:
-		bound = bound.merge(extra)
-		poly = PackedVector2Array([
-			bound.position, Vector2(bound.end.x, bound.position.y),
-			bound.end, Vector2(bound.position.x, bound.end.y),
-		])
-	if pet._passthrough_set \
-			and absf(bound.position.x - pet._passthrough_bound.position.x) < PASSTHROUGH_DEADZONE \
-			and absf(bound.position.y - pet._passthrough_bound.position.y) < PASSTHROUGH_DEADZONE \
-			and absf(bound.size.x - pet._passthrough_bound.size.x) < PASSTHROUGH_DEADZONE \
-			and absf(bound.size.y - pet._passthrough_bound.size.y) < PASSTHROUGH_DEADZONE:
-		return
-	pet._passthrough_bound = bound
-	pet._passthrough_set = true
-	DisplayServer.window_set_mouse_passthrough(poly)
-
-## 角色轮廓的近似多边形：把包围盒 8 个端点投影到屏幕，取凸包，再沿质心外扩 catch_padding。
-## 比直接丢一个矩形贴合得多 —— 人形在屏幕上是个斜六边形，头顶两侧的空白能正确穿透。
-func _char_screen_polygon() -> PackedVector2Array:
-	var aabb: AABB = pet._raw_model_aabb()
-	var pts := PackedVector2Array()
-	for i in 8:
-		var world: Vector3 = pet._pivot.global_transform * aabb.get_endpoint(i)
-		if pet._camera.is_position_behind(world):
-			continue
-		pts.append(pet._camera.unproject_position(world))
-	if pts.size() < 3:
-		return PackedVector2Array()
-	var hull: PackedVector2Array = Geometry2D.convex_hull(pts)
-	if hull.size() > 1 and hull[0].is_equal_approx(hull[hull.size() - 1]):
-		hull.remove_at(hull.size() - 1)
-	if hull.size() < 3:
-		return PackedVector2Array()
-	var center := Vector2.ZERO
-	for p in hull:
-		center += p
-	center /= float(hull.size())
-	var out := PackedVector2Array()
-	for p in hull:
-		out.append(p + (p - center).normalized() * pet.catch_padding)
-	return out
 
 ## 由主脚本的 _input 虚函数逐字转发过来（RefCounted 收不到引擎输入回调）。
 func _input(event: InputEvent) -> void:
@@ -187,6 +105,8 @@ func _input(event: InputEvent) -> void:
 		pet._moved += (event as InputEventMouseMotion).relative.length()
 
 func _begin_drag() -> void:
+	# 被拖走了也算打断"闲坐着"（同上）
+	pet._wake_from_rest()
 	if pet._state == pet.State.SLEEP:
 		_wake_up()
 	pet._dragging = true
@@ -218,6 +138,10 @@ func _end_drag() -> void:
 			pet.set_home_here()
 
 func _react_click() -> void:
+	# 她被打断了"闲坐着"：显式起身 + 把闲时计数清零（见 pet_walk.tick_sit）。
+	# 放在这儿而不是宿主 `_play()` 里 —— 那种被动重播（心情微变）也会走 _play，
+	# 会把计数一次次清掉，躺下就永远触发不了（实测踩过）
+	pet._wake_from_rest()
 	var now_ms: int = Time.get_ticks_msec()
 	var dbl: bool = (now_ms - pet._last_click_ms) < pet.double_click_ms
 	pet._last_click_ms = now_ms
@@ -276,3 +200,8 @@ func _feed() -> void:
 	pet._state = pet.State.IDLE
 	pet._say(pet.LINES_FEED[pet._rng.randi_range(0, pet.LINES_FEED.size() - 1)])
 	pet._mood.cheer()      # 喂了东西 = 开心（心情系统，见 pet_mood.gd）
+	# 日记：这天被喂过（见 pet_diary.gd 的拍子表）。
+	# **守卫别删** —— 这个文件 PC / 安卓共用，而安卓宿主没有 `_diary_note`
+	# （理由同 pet_chat_flow.gd 里那条注释）
+	if pet.has_method("_diary_note"):
+		pet._diary_note("feed")

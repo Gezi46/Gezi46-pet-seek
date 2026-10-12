@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 验"右键菜单一打开就被盖住"这件事。
 ##
 ## 根因是**每 2 秒一次的"重申置顶"**：宠物自己是置顶窗口，重申会把它抬到

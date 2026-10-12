@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## dsh 的设置文件：读一个键、改一个键、**原样**写回。
 ##
 ## 从 pet_harness.gd 搬出来（作业单 B2.1）。为什么值得单独一个文件 ——

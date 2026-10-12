@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 验证「全屏检测 → 安静模式」和「减小移动概率」。
 ##
 ## 分四段，每段都对着**客观事实**断言，不看"我觉得":

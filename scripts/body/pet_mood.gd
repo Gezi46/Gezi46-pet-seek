@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends RefCounted
 ## 情绪：三维心态（开心 / 生气 / 悲伤）+ 被摸到的反应。
 ##

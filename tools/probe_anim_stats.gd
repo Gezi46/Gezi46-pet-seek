@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 打印每个动画的"真实长度"和"脚本算出来的动作时长"(_action_time)，
 ## 用来定位"较长动画播到一半就被切回待机"这类问题。

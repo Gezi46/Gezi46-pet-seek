@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 让宠物自己跑一段时间，记录每一次动画切换，并判定"上一个动画还没播完就被切走"。
 ## 判据：上一个动画**不是循环动画**、且切换时它还没播到 90% 长度 -> 算一次"被切走"。

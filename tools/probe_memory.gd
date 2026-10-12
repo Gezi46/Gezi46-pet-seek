@@ -24,6 +24,8 @@ const PetPersona := preload("res://scripts/ai/memory/pet_persona.gd")
 const PetSecret := preload("res://scripts/ai/pet_secret.gd")
 const CHAT_CFG := "user://pet_chat.cfg"
 const TMP_MEM := "user://_probe_memory.json"
+## 关系计数那段的临时文件（**不能用默认路径** —— 那会写到用户的真记忆上）
+const TMP_REL := "user://_probe_relation.json"
 
 ## 对话脚本：前两句喂记忆和情绪，中间两句试认知边界，
 ## 最后三句看"她记不记得住"和"她知不知道自己是 18 岁"
@@ -398,27 +400,48 @@ func _run_offline() -> void:
 	_check(m3.mood() == mood_script.Mood.HAPPY, "心情：摸头/喂食 → 开心")
 	m3.bump(1.0)
 	_check(m3.mood() == mood_script.Mood.ANGRY, "心情：有点委屈 → 生气（压过开心）")
+	# ⚠️ 这里**不是**"生气到顶就闭嘴"：`cheer()` 默认就加满 1.0，`bump(4.0)` 又被 clamp 到 1.0，
+	# 于是生气占比正好 50%，够不到 MUTE_SHARE(0.60) ⇒ is_muted() 是 false。
+	# 三维之后"闭嘴"的判据是**生气占比 ≥ 60%**，不是"生气强度大"（见 pet_mood.gd 的门禁那组常量）
 	m3.bump(4.0)
-	_check(m3.is_muted() and (m3.mood() == mood_script.Mood.ANGRY
-			or m3.mood() == mood_script.Mood.SAD),
-		"心情：生气到顶（闭嘴）→ 生气 / 伤心（对半，见 full_mood_pick）")
+	_check(not m3.is_muted() and m3.share(mood_script.Mood.ANGRY) < mood_script.MUTE_SHARE,
+		"心情：生气占比 50%%（< 闭嘴线 60%%）→ 还没到不开口的程度")
+	# 再攒几次，生气占过 60% 才该闭嘴。
+	# ⚠️ 不能靠接着 bump：开心已经是 1.0，两边一起 clamp 在 1.0 ⇒ 占比永远卡在 50%，
+	# 得先把开心压下去（现实里也确实是"开心淡掉了、气还在"才会真闭嘴）
+	m3.set_levels(0.1, 0.8, 0.0)
+	_check(m3.is_muted() and m3.mood() == mood_script.Mood.ANGRY,
+		"心情：生气占比过 60%% → 闭嘴（is_muted），且主导情绪是生气")
 	m3.soothe()
 	_check(m3.mood() != mood_script.Mood.SAD, "心情：被哄后不再是伤心")
-	_check(mood_script.mood_name(mood_script.Mood.MISCHIEF) == "坏心眼"
-			and mood_script.mood_name(mood_script.Mood.HAPPY) == "开心"
+	# 2026-10-07 情绪重做成三维强度（开心 / 生气 / 悲伤，各自半衰期）之后，
+	# "坏心眼"并进了开心、"怨气满时对半"整条删掉 —— 下面这几条跟着改到新语义上。
+	# ⚠️ 原来那两条一直"通过"是因为 Mood.MISCHIEF 这种**取不到的枚举值**在弱类型下
+	# 不报错、只是判假，而 full_mood_pick 又恰好返回 ANGRY 的一半 —— 属于**假通过**，
+	# 别再按老写法写
+	_check(mood_script.mood_name(mood_script.Mood.HAPPY) == "开心"
+			and mood_script.mood_name(mood_script.Mood.ANGRY) == "生气"
+			and mood_script.mood_name(mood_script.Mood.SAD) == "悲伤"
 			and mood_script.mood_name(mood_script.Mood.NEUTRAL) == "平常",
 		"心情：名字映射（写进人设用）")
 	var m4 = mood_script.new()
 	m4.setup(null)
 	m4.tease()
-	_check(m4.mood() == mood_script.Mood.MISCHIEF, "心情：坏心眼（平静时随机冒出来那种）")
+	_check(m4.mood() == mood_script.Mood.HAPPY,
+		"心情：淘气（原「坏心眼」）并进开心 —— 2026-10-07 起 tease() 加的是开心")
 
 	# ---- 7.8.5 心情的持续 / 触发 / 哄好（2026-10-01 第二轮需求）
-	_check(absf(mood_script.MOOD_DECAY_PER_SEC * 3600.0 - 1.0) < 0.001,
-		"心情：每种最多维持 1 小时（衰减速 ≈ 1/3600）")
-	_check(mood_script.full_mood_pick(0.2) == mood_script.Mood.SAD
+	# 三维之后衰减是**各自半衰期**（开心 25 分 / 生气 60 分 / 悲伤 120 分），
+	# 不再是"每种最多维持 1 小时"那个单一常量
+	_check(absf(mood_script.HALF_LIFE_HAPPY - 25.0 * 60.0) < 0.001
+			and absf(mood_script.HALF_LIFE_ANGRY - 60.0 * 60.0) < 0.001
+			and absf(mood_script.HALF_LIFE_SAD - 120.0 * 60.0) < 0.001,
+		"心情：三维各自半衰期（开心 25 分 / 生气 60 分 / 悲伤 120 分）")
+	# full_mood_pick 现在恒给生气（三维之后两种情绪本来就能并存，不需要二选一）。
+	# 这个壳留着只是为了旧调用点不报错，**不再是"对半"**
+	_check(mood_script.full_mood_pick(0.2) == mood_script.Mood.ANGRY
 			and mood_script.full_mood_pick(0.8) == mood_script.Mood.ANGRY,
-		"心情：怨气满 → 生气 / 伤心对半（骰子 <0.5 伤心，否则生气）")
+		"心情：full_mood_pick 恒返回生气（兼容壳，不再对半）")
 	var m5 = mood_script.new()
 	m5.setup(null)
 	_check(not m5.is_upset(), "心情：平常心不算闹情绪（点击照常摸头）")
@@ -428,8 +451,17 @@ func _run_offline() -> void:
 	_check(m5.mood() == mood_script.Mood.HAPPY, "心情：哄完 → 变开心（不是平常心）")
 	var m6 = mood_script.new()
 	m6.setup(null)
-	m6.cheer()
-	_check(m6._immune_to_sulk(), "心情：开心着被冷落也不攒委屈度（不记录生气值）")
+	# 三维之后要先摆出"正开心"（cheer 到满会变成主导维，才是 _immune_to_ignore 要的场合）。
+	# ⚠️ 方法名从 `_immune_to_sulk` 改成了 `_immune_to_ignore`（2026-10-07 情绪重做）——
+	# 老名字在弱类型下**不报解析错、只在运行时抛**，一抛就把整个函数从这儿掐断，
+	# 后面所有检查项**一条都不会跑**（表现出来只是"总数少了"，极难发现）
+	m6.set_levels(0.9, 0.0, 0.0)
+	_check(m6.mood() == mood_script.Mood.HAPPY, "心情：摆出正开心（下面那条的前提）")
+	_check(m6._immune_to_ignore(), "心情：开心着被冷落也不攒生气（心情好不计较）")
+	# 平常心时不受这条保护（该计较还是计较）
+	var m6b = mood_script.new()
+	m6b.setup(null)
+	_check(not m6b._immune_to_ignore(), "心情：平常心时不受「开心就不计较」保护")
 
 	# ---- 7.8.1 「只在小范围走动」的范围盒子（static，所以离线可验）
 	var walk_script: GDScript = load("res://scripts/body/pet_walk.gd")
@@ -549,6 +581,58 @@ func _run_offline() -> void:
 			setting_miss += "%s(不会落盘) " % key
 	_check(setting_miss == "",
 		"设置表交叉检查：%s" % ("全部接上" if setting_miss == "" else setting_miss))
+
+	# ---- 7.11 关系计数（2026-10-10"关系感知"加的那几个）。
+	# 它们是"她见过你多少面 / 今天聊了几轮"的唯一来源，写错了会让她凭空多算一堆见面
+	#
+	# ⚠️ **必须换临时文件**：`clear()` 会真落盘，用默认路径等于把用户的真记忆清掉。
+	# 规矩见 CONVENTIONS 附录：碰真文件时"备份 → 改 → 验 → 还原"挤在一起 ——
+	# 这里更省事，压根不碰它（换成临时路径，用完立刻删）
+	var r1 = PetMemory.new()
+	r1.file_path = TMP_REL
+	r1.clear()
+	r1.note_session()
+	_check(r1.sessions_total == 1 and r1.sessions_today == 1,
+		"关系计数：第一次打开 → 累计 1 / 今天 1")
+	r1.note_session()
+	r1.note_chat_turn()
+	r1.note_chat_turn()
+	_check(r1.sessions_total == 2 and r1.sessions_today == 2 and r1.chats_today == 2,
+		"关系计数：再开一次 + 聊 2 轮 → 累计 2 / 今天 2 / 聊 2")
+	# 跨天：把"上次记的是哪一天"改成 2000 年，再记一次就该翻篇
+	r1.sessions_day = "2000-01-01"
+	r1.note_session()
+	_check(r1.sessions_today == 1 and r1.chats_today == 0,
+		"关系计数：跨天 → 今天的两个计数归零")
+	_check(r1.sessions_total == 3, "关系计数：跨天不影响累计次数")
+	# clear() 必须一起清（留着"见过 300 面"而档案是空的，比清零更出戏）
+	r1.clear()
+	_check(r1.sessions_total == 0 and r1.sessions_today == 0 and r1.chats_today == 0,
+		"关系计数：clear() 把计数一起清掉")
+	# 存盘读回：这几个字段落不落得进 pet_memory.json
+	var r2 = PetMemory.new()
+	r2.file_path = TMP_REL
+	r2.note_session()
+	r2.note_chat_turn()
+	r2.save()
+	var r3 = PetMemory.new()
+	r3.file_path = TMP_REL
+	r3.load_from_disk()
+	_check(r3.sessions_total == 1 and r3.sessions_today == 1 and r3.chats_today == 1,
+		"关系计数：存盘读回一致（累计 1 / 今天 1 / 聊 1）")
+	# 老存档（没有这几个键）读回来该是 0 —— **不能凭空变出见面次数**。
+	# 直接手写一份"旧格式"的文件来验（模拟升级前留下的 pet_memory.json）
+	var of := FileAccess.open(TMP_REL, FileAccess.WRITE)
+	if of != null:
+		of.store_string(JSON.stringify({"profile": {}, "working": {}, "items": [], "last_chat": 123}))
+		of.close()
+	var r4 = PetMemory.new()
+	r4.file_path = TMP_REL
+	r4.load_from_disk()
+	_check(r4.sessions_total == 0 and r4.sessions_today == 0 and r4.chats_today == 0
+			and r4.last_chat == 123,
+		"关系计数：老存档缺键 → 0，且不影响 last_chat")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP_REL))
 
 	# ---- 8. 主动说话的四个频率档 → 也搬去了 probe_memory_prompt.gd
 	#      （"她什么时候开口"和"她说什么"是同一族）

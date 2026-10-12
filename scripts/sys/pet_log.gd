@@ -112,11 +112,19 @@ static func _rotate_if_needed() -> void:
 static func export_logs(extra: Dictionary = {}, secret_values: Array = []) -> String:
 	var stamp := Time.get_datetime_string_from_system(false, true)
 	stamp = stamp.replace(":", "-").replace(" ", "_")
-	var base := OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP)
-	if base.is_empty() or not DirAccess.dir_exists_absolute(base):
-		base = OS.get_user_data_dir()      # 没有桌面（或取不到）就退到数据目录，别失败
-	var folder := base.path_join("PetDeek-日志-%s" % stamp)
-	if DirAccess.make_dir_recursive_absolute(folder) != OK:
+	# ⚠️ 落点要**真去建目录才算数**，不能只看"空不空 / 在不在"（2026-10-09 手机真机实测）：
+	#   Android 上 `OS.get_system_dir(DESKTOP)` 返回 `/storage/emulated/0` ——
+	#   路径**存在** ✓，但那是公共存储、应用**写不进去** ✗（scoped storage ✓）。
+	#   老写法只判存在 → 判定通过 → 建目录失败 → 直接报"导出失败" ✗，
+	#   而它本该退回 `user://`（手机宿主随后会用 PetBridge 把包挪进公共「下载」✓）。
+	#   所以挨个候选落点**真去建**，第一个建得出来的才用 ✓
+	var folder := ""
+	for base in _export_bases():
+		var candidate: String = base.path_join("PetDeek-日志-%s" % stamp)
+		if DirAccess.make_dir_recursive_absolute(candidate) == OK:
+			folder = candidate
+			break
+	if folder == "":
 		return ""
 	# 系统信息第一个写：就算下面那些日志全是空的，这一份也够说明"跑在什么机器上"
 	_write_text(folder.path_join("系统信息.txt"), info_text(extra))
@@ -134,6 +142,20 @@ static func export_logs(extra: Dictionary = {}, secret_values: Array = []) -> St
 		_cleanup_dir(folder)
 		return zip_path
 	return folder
+
+## 导出的候选落点，按顺序试 ✓：桌面 → 数据目录。
+## 手机上没有"桌面"这回事 ✓，而 `/storage/emulated/0` **存在却写不进** ✗ ——
+## 所以判据只能是"真去建目录"，见 export_logs 里那段说明 ✓
+static func _export_bases() -> Array:
+	var out: Array = []
+	# ⚠️ 安卓上**别把那个候选放进来**：它返回 /storage/emulated/0，写不进还让引擎
+	# 吐一条 `ERROR: Could not create directory: …` ✗（功能没错，但日志里那条红字会误导人 ✓）
+	if OS.get_name() != "Android":
+		var desk := OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP)
+		if not desk.is_empty() and DirAccess.dir_exists_absolute(desk):
+			out.append(desk)
+	out.append(OS.get_user_data_dir())      # 兜底：一定写得进去 ✓
+	return out
 
 ## 系统信息：程序 / 机器 / 她那些设置。**任何一项取不到都不算错** —— 缺的那行跳过
 static func info_text(extra: Dictionary = {}) -> String:
@@ -163,9 +185,15 @@ static func info_text(extra: Dictionary = {}) -> String:
 	lines.append("")
 	lines.append("—— 机器 ——")
 	lines.append("系统：%s %s" % [OS.get_name(), OS.get_version()])
-	lines.append("CPU：%s（%d 核）" % [OS.get_processor_name(), OS.get_processor_count()])
+	# ⚠️ 安卓上这两样都取不到（2026-10-09 真机导出的包里就是"CPU：（8 核）"和"-0.0 GB" ✗）——
+	# 一份要发给别人看的报告里，宁可写"拿不到"，也别写一个让人误会的数字 ✓
+	var cpu := OS.get_processor_name().strip_edges()
+	if cpu != "":
+		lines.append("CPU：%s（%d 核）" % [cpu, OS.get_processor_count()])
+	else:
+		lines.append("CPU：%d 核（这台机器取不到型号）" % OS.get_processor_count())
 	var mem: Dictionary = OS.get_memory_info()
-	if mem.has("physical"):
+	if mem.has("physical") and float(mem["physical"]) > 0.0:
 		# 报 physical / free。**别用 available** —— 那个是"可用虚拟内存"，
 		# 算出来比物理内存还大（实测见过"内存 31.7 GB，可用 87.5 GB"），只会把人带偏
 		lines.append("内存：%.1f GB（空闲 %.1f GB）" % [

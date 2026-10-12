@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 验"偷看屏幕"整条链路：从 user://pet_chat.cfg 读设置 → 抓屏 → 视觉模型 → 打印回复。
 ##
@@ -36,7 +33,9 @@ func _run() -> void:
 	var key := String(cfg.get_value("ai", "key", ""))
 	print("A 视觉服务=%s  模型=%s  key=%s" % [
 		url, model, ("有（%d 字符）" % key.length()) if key != "" else "空"])
-	if url == "" or model == "" or key == "":
+	# key 可以为空：本机后端（llama.cpp 等）不要鉴权，桌宠本体对空 key
+	# 本来就不发认证头（2026-10-11 接本地模型时放开的）
+	if url == "" or model == "":
 		ok_fail("配置不全：先在桌宠菜单「AI 服务设置…」里填好，或直接写进 %s" % CFG)
 
 	var c = PetChat.new()

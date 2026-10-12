@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 把窗口里指定区域按真实像素放大，并可切变体做 A/B —— 定位"某条边缘看着不对"用。
 ## 想看整体效果/几何有没有被改坏，用 tools/check_effect.gd（或根目录的 检查效果.bat）更省事。

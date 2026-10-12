@@ -16,7 +16,7 @@ extends RefCounted
 ##   host._peek_screen() / host._begin_stream_bubble() / host._refresh_persona() / host._send_first()
 ##   host._last_origin / host._chat_streaming                  读写
 ##   host._cjk_font / host._bubble                             选择框 UI
-##   host._invalidate_passthrough() / host.get_node_or_null("UI/Anchor")
+##   host.get_node_or_null("UI/Anchor")
 ##
 ## 宿主要留的壳（外部 / 菜单 / pet_pointer / pet_touch 按老名字调）：
 ##   _touch_react / _soothe / _soothe_her / _pick_line —— 都转到这里
@@ -148,7 +148,15 @@ func on_reconcile_check() -> void:
 	if _host.memory_enabled and _host.memory != null:
 		var dt := Time.get_datetime_dict_from_system()
 		var when := "%d月%d日" % [int(dt["month"]), int(dt["day"])]
-		_host.memory.add("她 %s 看到主人忙着「%s」，本来在生闷气，就自己消了气、不闹了。" % [when, fg],
+		# 只存**应用名**（窗口标题的最后一段，浏览器/资源管理器的段尾都是应用名）：
+		# 整串标题又长又混零宽字符，每轮进上下文，她学着念出来 → 气泡一嘴乱码
+		# （2026-10-11 实测：她把「31话 - 脑洞学生会 - … - Microsoft Edge」整串复述了）
+		var app := fg.split(" - ")[fg.split(" - ").size() - 1].strip_edges()
+		for u in [0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0xFEFF]:
+			app = app.replace(String.chr(u), "")
+		if app.length() > 24:
+			app = app.substr(0, 24)
+		_host.memory.add("她 %s 看到主人忙着「%s」，本来在生闷气，就自己消了气、不闹了。" % [when, app],
 			0.0, PetMemory.KIND_MOOD)
 		_host.memory.save()
 
@@ -221,7 +229,6 @@ func _show_comfort() -> void:
 	_box.position = Vector2(2.0, _host._bubble.position.y + _host._bubble.size.y + 2.0)
 	_box.visible = true
 	_hide_ms = Time.get_ticks_msec() + 8000
-	_host._invalidate_passthrough()
 
 func _on_comfort_picked(_text: String) -> void:
 	_hide_comfort()
@@ -231,4 +238,3 @@ func _hide_comfort() -> void:
 	if _box != null:
 		_box.visible = false
 	_hide_ms = 0
-	_host._invalidate_passthrough()

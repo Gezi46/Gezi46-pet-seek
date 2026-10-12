@@ -16,13 +16,12 @@ extends RefCounted
 ## 对宿主的接口面（只列真正用到的）：
 ##   host._chat_panel / _chat_log_label / _chat_scroll / _chat_input   面板零件（宿主持有）
 ##   host._chat_log / host._chat_open / host._cjk_font / host._bubble  记录与字体
-##   host.chat_log_lines / host.chat_enabled / host.mouse_passthrough_enabled
+##   host.chat_log_lines / host.chat_enabled
 ##   host._chat / host.harness / host._quick                           三条链路
 ##   host._ai_busy() / host._offline() / host._say() / host._soothe()
 ##   host._close_panels() / host._refresh_persona() / host._begin_stream_bubble()
 ##   host._begin_harness() / host.harness_task_of()
 ##   host._memory_flow / host._last_origin / host._chat_streaming
-##   host._passthrough_set                                             穿透区标记
 
 ## 宿主（desktop_pet.gd）。弱类型：它 preload 本模块，标上就成循环 preload
 var _host = null
@@ -122,10 +121,6 @@ func open() -> void:
 	_host._close_panels()      # 两个面板共用一块地方，先收掉另一个
 	_host._chat_open = true
 	_host._chat_panel.visible = true
-	if _host.mouse_passthrough_enabled:
-		# 整窗收点击，别把面板自己挖成穿透区
-		DisplayServer.window_set_mouse_passthrough(PackedVector2Array())
-		_host._passthrough_set = true
 	refresh_log()
 	set_focus(true)
 	_host._chat_input.clear()
@@ -138,8 +133,6 @@ func close() -> void:
 	if _host._chat_panel != null:
 		_host._chat_panel.visible = false
 	set_focus(false)
-	# 让穿透区下一帧重算：聊天时被清成整窗了，不重算就一直不穿透
-	_host._passthrough_set = false
 
 ## 窗口平时是 no_focus 的（project.godot 里设的），这样点桌面不会把它顶到前面。
 ## 但 no_focus 的窗口收不到键盘 —— 要打字就得临时把它摘掉，再主动抢一次前台。

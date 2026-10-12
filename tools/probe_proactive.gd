@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 主动对话模块（pet_proactive.gd）的离线自检 —— 2026-09-29 第③条搬家之后补的。
 ##
 ## 用**假宿主**把 tick() 的每一道门、ask() 的走向都走一遍：不联网、不花额度。

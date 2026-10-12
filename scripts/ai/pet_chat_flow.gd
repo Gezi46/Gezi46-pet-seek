@@ -72,8 +72,10 @@ func on_token(t: String) -> void:
 	# ⚠️ 这一层原来**只在 _reply_opts_mode 下生效** ✗ —— 于是普通聊天里的候选直接冒了出来，
 	# 一路漏进气泡和聊天框（用户 2026-09-27 报的"聊天框会卡丢"，截图里那行 `%% [...]` 就是它）。
 	# 现在不管哪条路都切：`%%` 出现在行首本来就不可能是她正常说话。
+	# ⚠️ 2026-10-11：本地小模型常把分隔符写成**全角 ％％**（或别的变体）—— 也认，
+	# 否则整段 `％％ [...]` 会原样冒进气泡（用户报的"大量无意义字符"）
 	_host._reply_raw += t
-	var cut: int = _host._reply_raw.find(_host.OPTIONS_MARK)
+	var cut: int = _first_opts_mark(_host._reply_raw)
 	var visible_part: String = _host._reply_raw if cut < 0 \
 		else _host._reply_raw.substr(0, cut)
 	if cut < 0 and visible_part.length() > 2:
@@ -84,6 +86,32 @@ func on_token(t: String) -> void:
 		_host.bubble.append_token(visible_part.substr(_host._stream_shown.length()))
 		_host._stream_shown = visible_part
 
+## 找分隔符最早出现的位置：半角 %% 和全角 ％％ 都算（本地小模型实测会写全角）。
+## 没找到返回 -1
+static func _first_opts_mark(s: String) -> int:
+	var a: int = s.find("%%")
+	var b: int = s.find("％％")
+	if a < 0:
+		return b
+	if b < 0:
+		return a
+	return mini(a, b)
+
+## 剥掉把整句话包起来的对称引号（"…" / “…” / 「…」 等）—— 本地小模型爱把台词
+## 当"引用对白"写，一头一尾的引号挂在气泡上就是用户说的"无意义字符"
+## （2026-10-11 实测：她说 `"喂喂……哼。"`）。只剥**最外层一对**，句中引号不动
+static func _strip_speech_quotes(s: String) -> String:
+	var t := s.strip_edges()
+	if t.length() < 2:
+		return t
+	var pairs := {
+		"\"": "\"", "“": "”", "「": "」", "『": "』", "‘": "’", "《": "》",
+	}
+	var open := t.substr(0, 1)
+	if pairs.has(open) and t.substr(t.length() - 1, 1) == String(pairs[open]):
+		t = t.substr(1, t.length() - 2).strip_edges()
+	return t
+
 # ------------------------------------------------------------------ 收尾
 
 ## 把「她的话 + %% [候选]」拆开。分隔符没出现 / 候选洗不出来 → 候选为空，
@@ -92,11 +120,11 @@ func on_token(t: String) -> void:
 ## 就会把 JSON 弄坏，而"她的话"恰恰是最不该被格式绑住的。
 ## 写成 static 是为了能离线验（tools/probe_memory.gd 会试它）
 static func split_options(raw: String, mark: String) -> Dictionary:
-	var i: int = raw.find(mark)
+	var i: int = _first_opts_mark(raw)
 	if i < 0:
 		return {"say": raw.strip_edges(), "options": []}
 	var say: String = raw.substr(0, i).strip_edges()
-	var tail: String = raw.substr(i + mark.length()).strip_edges()
+	var tail: String = raw.substr(i + 2).strip_edges()
 	var opts: Array = PetQuick.parse_quick_options(tail)
 	# 分隔符在最前（模型没说那句话）时别把 say 弄空，至少能说点什么
 	return {"say": say if say != "" else raw.strip_edges(), "options": opts}
@@ -110,7 +138,7 @@ func on_replied(text: String) -> void:
 	# （用户 2026-09-27 报的"聊天框会卡丢"，截图上那行 `%% [...]` 就是它）
 	_host._reply_opts_mode = false
 	var split: Dictionary = split_options(text, _host.OPTIONS_MARK)
-	text = String(split["say"])
+	text = _strip_speech_quotes(String(split["say"]))
 	var given: Array = split["options"]
 	_host._stream_shown = ""
 	_host._reply_raw = ""
@@ -118,12 +146,28 @@ func on_replied(text: String) -> void:
 	# 收尾才用 _say()：完整回复 + 1.8 秒后淡出
 	_host._say(text)
 	# 这条路是**共用**的：文本 / 偷看 / 摄像头都会进来，只有 origin 是 chat 的才叫"打字聊"。
-	# _note_reply 会把 origin 消费掉，所以先记一份
+	# _note_reply 会把 origin 消费掉，所以先记一份。
+	# ⚠️ note_reply 里 given 非空会直接 show_given 把候选摆出来（省一次编候选请求）——
+	# 摆没摆看 quick 的代号变没变：变过就**别再 after_reply**，否则同一轮按钮被
+	# 连换两组（模型给的 → 写死那组 → AI 那组），看着就是"闪一下"（2026-10-11 用户报）
 	var was_chat: bool = _host._last_origin == "chat"
+	var gen_before: int = _host._quick.last_gen()
 	_host._note_reply(text, given)     # 记忆：按"这轮是谁引出来的"决定怎么记
 	# 聊天也**概率**给快速回答。概率比主动开口低：聊天时你多半正打着字，按钮反而碍事
-	if was_chat:
+	if was_chat and _host._quick.last_gen() == gen_before:
 		_host._quick.after_reply("chat", text.strip_edges(), _host._quick_context(text))
+	# 日记：只有**打字聊天**算"主人陪她聊了"这一个拍子。
+	# 主动搭话 / 偷看 / 摄像头那几条也会走到这儿，但那些是她单方面在说 ——
+	# 记进日记就变成她自己的流水账了（一天记 8 次"我跟主人说话了"，很假）
+	# ⚠️ 别挪进上面那个 if：候选由 show_given 给的聊天轮不调 after_reply，但**日记照记**
+	#
+	# **守卫不能删**：这个文件是 PC 和安卓**共用**的（`桌宠整合/同步代码.bat`
+	# 会把它整份拷到安卓项目），而安卓宿主 `scripts/mobile/pet_mobile.gd`
+	# 是另一个入口、没有 `_diary_note`（日记是 PC 独占的功能）。
+	# 弱类型下直接调一个不存在的方法 = 聊天每条回复都抛错。
+	# `has_method` 这个路子仓里已有先例，见 sys/pet_log.gd 的 `OS.has_method(...)`
+	if was_chat and _host.has_method("_diary_note"):
+		_host._diary_note("talk")
 
 func on_failed(msg: String) -> void:
 	var was_streaming: bool = _host._chat_streaming

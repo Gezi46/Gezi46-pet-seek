@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 看这台机器上 Godot 能不能直接拿到摄像头（决定"看摄像头"是走本机采集还是外部服务）。
 ## 用法: & $godot --path . --headless --script res://tools/probe_camera.gd

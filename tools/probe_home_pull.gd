@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 验"家 / 初始位置"这一套。**必须带窗口跑**（headless 下 window_get_size() 是 0，
 ## 停靠位置和"离家多远"都测不出来）：

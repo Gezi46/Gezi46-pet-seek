@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 一键效果检查：渲染几个固定取景，导出 PNG 并打印可对比的量化指标。
 ## 用法: --script res://tools/check_effect.gd [-- 输出目录]

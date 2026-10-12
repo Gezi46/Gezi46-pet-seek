@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 流式（SSE）分片解析：把 OpenAI 兼容的 `data: {...}` 行变成「正文增量 / 思考增量 / 收尾 / 出错」。
 ##
 ## 从 pet_chat.gd 搬出来（作业单 B1.2）。它**只认字节和 JSON** —— 不认识连接、不认识信号、

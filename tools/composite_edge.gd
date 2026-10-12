@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 把带 alpha 的透明渲染图合成到深色背景上（模拟桌面），并统计边缘色偏，
 ## 这样能看到"透到桌面上"到底是什么颜色。

@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 验"托盘图标"这条链路：
 ##   A 辅助进程起来了（命令行里带着托盘要的参数），图标文件也解出来了
 ##   B 托盘下达命令的通道：写 toggle → 她隐藏；再写 toggle → 她回来

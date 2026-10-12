@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends RefCounted
 ## 记忆流程：把"记什么、什么时候叫模型、回来了怎么落库"这一摊从主控里搬出来。
 ##
@@ -92,6 +89,10 @@ func note_exchange(reply: String) -> void:
 		return
 	_last_reply = reply
 	memory.note_exchange(user_msg, reply)
+	# 关系计数：今天多聊了一轮（"今天你们已经聊了 N 轮"那段就靠它）。
+	# **不用再 save()** —— note_exchange 末尾自己会存（多写一次文件没意义）。
+	# 放在它后面是有意的：计数要在同一份存档里落下去
+	memory.note_chat_turn()
 	_maybe_extract(user_msg, reply)
 
 ## 把"她自己说的"选择性收进记忆。四道筛子，逐层收紧：
@@ -150,8 +151,16 @@ func note_observation(origin: String, reply: String) -> void:
 	# **看图那几条到此为止，不抽"事实"**（2026-10-03 用户报的 bug）：截图里的内容不一定是
 	# 主人真在做的事 —— 可能是视频 / 直播 / 游戏画面。之前让 OBSERVE_PROMPT 从里面抽事实，
 	# 于是档案里攒了一堆"主人 9 月 X 日在玩植物大战僵尸"，她下次就当现实发生的事提起来 ✗
-	# 她那句感慨仍留 self_line（上面），只是不再往上"抬"成关于主人的事实
-	if origin == "peek" or origin == "sulk_peek" or origin == "camera":
+	# ⚠️ 她那句感慨到底存不存？**看 memory_ai_extract**（这里原先写的是"仍留 self_line"，
+	# 是**错的** ✗ —— 2026-10-09 顺着"看图那几句话怎么没进记忆"的疑问查到这里才看见 ✓）：
+	#   · 开着（默认就是开 ✓）→ 上面那次 `memory.add` **根本没执行过** ✗，
+	#     她的原话一句都不存 ✓ —— 这是**故意的** ✓，理由就是再上面那两条
+	#     （不为她自己的撒娇污染【关于主人】档案 + 原话里的"今天/刚才"过几天会被读成"昨天" ✓）
+	#   · 关着 → 才走下面那条"存原话兜底"的 `memory.add(..., KIND_SELF_LINE)` ✓
+	# 所以"看图那几条到此为止"的准确含义是：**既不抽事实，通常也不留原话** ✓
+	# "share"（2026-10-09 手机端阶段 5c）：主人分享给她看的图 —— 和上面几条同一个道理，
+	# 她对着图说的那句话**不抬成"关于主人的事实"** ✓（不然档案里会攒一堆"主人今天看到了…" ✗）
+	if origin == "peek" or origin == "sulk_peek" or origin == "camera" or origin == "share":
 		return
 	if not bool(_host.memory_ai_extract) or _host._chat == null or _host._chat.once_busy():
 		return

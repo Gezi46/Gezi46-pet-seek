@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends RefCounted
 ## 装配：包围盒与校准、腿部方块校正、动画扫描、待机合成、眨眼叠加层 ——
 ## 也就是"把模型改造成能用的样子"（由 desktop_pet.gd preload 为 PetRig）。
@@ -25,8 +22,21 @@ const LOOPING_ANIMS: Array[String] = [
 ## **pet_rig_tex.gd**（B3.2）。两个模块都是 **static**，宿主节点当参数传进去
 const RigStats := preload("res://scripts/body/rig/pet_rig_stats.gd")
 const RigTex := preload("res://scripts/body/rig/pet_rig_tex.gd")
+## 启动那两趟采样的预烘焙缓存（阶段 5，2026-10-09）——
+## 它就是上面"采 10 个动画 × 567 个网格"那一步的速取通道 ✓
+const RigCache := preload("res://scripts/body/rig/pet_rig_cache.gd")
 ## 判断"方块是否长在模型另一半"的 x 阈值（模型中线在 x=0）
 const CROSSED_LEG_X := 0.03
+## 判"方块和它挂的骨头分居两侧"时的死区：任意一头离中线比它近，就不算跨侧。
+## 0.06 是量出来的（2026-10-08）：再小就会把中线附近那些正常的交界方块也卷进来
+const CROSSED_SIDE_MIN := 0.06
+## 找镜像骨头的位置容差。模型左右对称，(-x, y, z) 那根就是镜像；
+## 容差给 0.03 是因为导入后的骨骼原点未必严丝合缝（量到的是 0.269 / -0.269 这种）
+const CROSSED_MIRROR_TOL := 0.03
+## 位置匹配失败后，按名字找对侧时的距离上限。模型左右**并不严格对称**：
+## 帽子两角的骨差 0.12（实测），所以这里放到 0.25 —— 反正名字那一关（共同片段 ≥6 字）
+## 已经够严，距离只是防它跨到别的部位去
+const CROSSED_NAME_TOL := 0.25
 ## 角色包围盒缓存多少帧刷新一次。
 ## 悬停检测和可点区域每帧都要这个盒子，但它变化很慢（只是呼吸/走路），
 ## 而算一次要遍历 567 个 MeshInstance3D —— 这是 `_process` 里唯一的每帧大头。
@@ -86,6 +96,11 @@ func _compute_model_aabb() -> AABB:
 ##   2. 个别动画（趴下、游泳、死亡）会把角色挪很远，直接取并集机位会被拉飞，
 ##      所以横向用中位数盒，落地高度只看待机动画。
 func _calibrate() -> void:
+	# 阶段 5（2026-10-09）：先试预烘焙缓存 —— 命中就整趟不跑 ✓
+	# 这是启动最贵的一步（10 个动画 × 最多 45 帧 × 567 个网格），
+	# 而它的输入只有模型几何 + 动画内容 + 阈值常量 → 结果可复用 ✓（判据见 pet_rig_cache.gd 头部）
+	if RigCache.load_calib(pet):
+		return
 	var probes: Array[String] = []
 	for n in [pet._idle_anim, "walk", "run", "jump", "sit", "sleep", "extra0", "extra7", "swim", "climb"]:
 		if pet._has.has(n) and not probes.has(n):
@@ -124,6 +139,8 @@ func _calibrate() -> void:
 	pet._calib_aabb.position.y = idle_box.position.y
 	pet._calib_aabb.size.y = median.position.y + median.size.y - idle_box.position.y
 	pet._calibrated = true
+	# 采完了才写盘 ✓（命中那次根本走不到这里 ✓）
+	RigCache.save_calib(pet)
 
 	if OS.is_debug_build():
 		print("[PetDeek] 采样 %d 个动画 -> 包围盒 %s（待机最低点 %.4f）" % [
@@ -226,6 +243,239 @@ func _fix_crossed_leg_parts() -> void:
 
 	if OS.is_debug_build():
 		print("[PetDeek] 腿部方块校正：移动 %d 块（不删除任何方块）" % moved)
+	# ── 2026-10-08 试过"按名字修左右挂反"，**结论：不能用** ✗，留个记录免得重走 ──────────
+	# 起因：真机截图里鞋上那块白色方块看着是斜的，探针量出 `LeftFoot4` 挂在 `RightFoot11` 下，
+	# 于是按名字把它挪回 `LeftFoot13`。结果三条通道互相打架 ✗：
+	#     位置判据（腿）→ 挪到 RightFoot11（正确）
+	#     名字判据（我加的）→ 挪回 LeftFoot13（错）
+	#     位置判据（跨侧）→ 又挪回 RightFoot11（正确）
+	# 根因：**这个模型的左右命名本身就不可信** —— `LeftFoot4` 实际坐在 x=+0.119（右侧）✗，
+	# 而耳朵 / HairSide 那一族又是"Right 在负侧"✗ —— 两族方向还相反，一条通吃两族的
+	# 名字判据必然搞错一边 ✓。所以**只保留位置判据**，名字只用来打日志 ✓
+	# （相关辅助 `_all_meshes` / `_find_bone_core` 也跟着删了）
+
+	# 这里其实是"几何修整"这条链的总入口（函数名是历史原因只提了腿）：
+	# 上面那条判据是"方块在模型的 x 正侧才算挂错"，可鞋舌那种**贴着中线**的块
+	# （|x| < CROSSED_LEG_X = 0.03）会被它直接跳过 ✗。
+	# 真机证据：鞋子上那块白色方块看着是斜的（正方形变梯形）→ 探针量出来
+	# **`LeftFoot4` 挂在 `RightFoot11` 下** ✗ —— 静止时位置是对的（世界变换保持），
+	# 可脚一动它就跟着**对面那只脚**转，一转到斜角，方块看起来就不再是正方形 ✓
+	#
+	# 这一族（Left/Right 名字把左右写死了的：LeftFoot4 / RightLowerLeg…）**只按名字修就够了** ✓
+	# —— 脚和腿的命名是可信的（Left = x 负侧 ✓），不像 ears / HairSide 那族是反的 ✗
+	# 这里其实是"几何修整"这条链的总入口（函数名是历史原因只提了腿）：
+	#   腿 → 左右挂反（按名字）→ 跨侧件 → 裙摆外扩
+	# 都合在这里调，两个宿主（桌面 / 手机）都不用改
+	_fix_crossed_parts()
+	_expand_skirt()
+
+## 除了腿，还有一批"方块挂在对面骨头下"的同类问题（2026-10-08 探针查出来，共 22 块 ✗）：
+##   corner_h12x~14x（16 块）挂在 corner_h151（x=+0.269）下，方块却在 x=-0.07~-0.27
+##   CollarSide5/8/9 挂在 CollarSide10（-0.097）下，方块却在 +0.087~+0.113
+##   MoreMoreUpperBody3/6/7 挂在 MoreMoreUpperBody12（-0.175）下，方块却在 +0.165~+0.216
+##
+## **判据不能用骨骼名**：这个模型里 ears / HairSide / Cornor 系列的 Right 骨**本来就长在
+## x 负侧**（命名约定和腿相反 —— 拿名字判会误报 306 块 ✗，实测过）。只能用位置：
+## **方块中心和它挂的骨头跨过了 x=0** 才算挂错。
+##
+## 为什么静止时看不出来：骨头的静止变换就是单位阵，方块挂谁下面都还在原地 ✓；
+## 可骨头一动，方块就绕着**身体另一侧的支点**摆 —— 表现就是"衣服穿模 / 方块飞出去"。
+##
+## 修法和腿那条一样：**只挪不删**，并保持世界变换（静止姿势一个字不变，变的只是"跟着哪根骨头"）。
+## 镜像骨头按**位置**找：模型左右对称，(-x, y, z) 那根就是。
+func _fix_crossed_parts() -> void:
+	var to_local: Transform3D = pet._model.global_transform.affine_inverse()
+	var meshes: Array[MeshInstance3D] = []
+	var bones: Array[Node3D] = []
+	var stack: Array[Node] = [pet._model]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		for c in n.get_children():
+			stack.push_back(c)
+		if n is MeshInstance3D:
+			meshes.append(n)
+		elif n is Node3D and n != pet._model:
+			bones.append(n)
+	var moved := 0
+	var no_mirror := 0
+	var dups := 0
+	for mi in meshes:
+		var par := mi.get_parent() as Node3D
+		if par == null:
+			continue
+		var box: AABB = to_local * (mi.global_transform * mi.get_aabb())
+		var mcx: float = box.position.x + box.size.x * 0.5
+		var porigin: Vector3 = to_local * par.global_transform.origin
+		# 任意一头贴中线 → 不算跨侧（交界处那些方块本来就该在这儿）
+		if absf(porigin.x) < CROSSED_SIDE_MIN or absf(mcx) < CROSSED_SIDE_MIN:
+			continue
+		if porigin.x * mcx > 0.0:
+			continue                    # 同一侧：没问题
+		var target: Node3D = _find_mirror_bone(bones, porigin, par, to_local)
+		if target == null:
+			# 位置凑不上时的退路：按**名字里的共同词**找对侧那根（见 _find_mirror_bone_by_name）
+			target = _find_mirror_bone_by_name(bones, porigin, par, to_local)
+		if target == null:
+			no_mirror += 1
+			continue                    # 找不到就对侧压根没有同类骨：原样留着，宁可不动也别挪错
+		# 目标骨下已有"位置 + 尺寸都对得上"的同款 → 那是重复件，挪过去只会叠出 z-fighting
+		if _has_duplicate_under(target, box.position + box.size * 0.5, box.size, to_local):
+			dups += 1
+			continue
+		if OS.is_debug_build():
+			print("  跨侧方块 %s：x=%+.3f ｜ %s → %s" % [mi.name, mcx, par.name, target.name])
+		var keep: Transform3D = mi.global_transform
+		par.remove_child(mi)
+		target.add_child(mi)
+		mi.global_transform = keep
+		moved += 1
+	if OS.is_debug_build():
+		print("[PetDeek] 跨侧方块校正：移动 %d 块（%d 块对侧没有同类骨、%d 块是对侧已有的重复件；只挪不删）" % [
+			moved, no_mirror, dups])
+
+## 位置凑不上时的退路：在对侧找一根**名字里有共同词**的骨头。
+##
+## 为什么需要它（2026-10-08 实测）：这个模型的左右**并不严格对称** —— 帽子两个角，
+## `corner_h151` 在 +0.269，对侧那根 `LeftCorner16` 在 -0.343（差 0.12），
+## 纯位置匹配永远够不着；但两个名字里都带 "corner" ✓。
+## 反过来，领子那 3 块（`CollarSide10`）在对侧压根没有同类骨 —— 名字比对找不到 → 保持原样 ✓
+## （这正是我要的：宁可不动，也别把领子错配到 Ribbon 上）
+func _find_mirror_bone_by_name(bones: Array[Node3D], origin: Vector3, exclude: Node3D,
+		to_local: Transform3D) -> Node3D:
+	var key := _name_core(String(exclude.name))
+	if key.length() < 6:
+		return null
+	var best: Node3D = null
+	var best_d := CROSSED_NAME_TOL
+	for b in bones:
+		if b == exclude:
+			continue
+		var o: Vector3 = to_local * b.global_transform.origin
+		if o.x * origin.x > 0.0 or absf(o.x) < CROSSED_SIDE_MIN:
+			continue                    # 必须真在对侧
+		if not _shares_token(_name_core(String(b.name)), key):
+			continue
+		var d: float = absf(o.x + origin.x) + absf(o.y - origin.y) + absf(o.z - origin.z)
+		if d < best_d:
+			best_d = d
+			best = b
+	return best
+
+## 名字的"字母骨架"：砍掉所有数字。Godot 导入 glb 时会给重名节点加数字后缀
+## （LeftLeg9 / LeftCorner16 就是这么来的，见 _find_leg_bone），比名字必须先剥掉它们
+func _name_core(n: String) -> String:
+	var out := ""
+	for i in n.length():
+		var c := n[i]
+		if c >= "0" and c <= "9":
+			continue
+		out += c
+	return out.to_lower()
+
+## 两个名字有没有 ≥6 个字符的共同片段（大小写不敏感）。
+## 取 6 是因为实测要能认出 corner_h ↔ LeftCorner（共同片段 "corner" 正好 6），
+## 而 3~4 个字符的重合太容易误配（一堆 bone / side / hair）
+func _shares_token(a: String, b: String) -> bool:
+	if a.length() < 6 or b.length() < 6:
+		return false
+	for i in range(0, b.length() - 5):
+		if a.find(b.substr(i, 6)) >= 0:
+			return true
+	return false
+
+## 目标骨下是不是已经有"位置 + 尺寸都对得上"的同款方块 —— 有就说明这是对侧已有的重复件，
+## 再挪过去只会两块重叠（z-fighting）。
+##
+## **判据必须是中心 + 尺寸一起比，不能只比原点**：这个工程踩过 —— 只比原点会把
+## 鞋帮外壳和它里面更小的件当成重复，删错一次左鞋连鞋带一起没了。
+## 这里比的是"中心距离 + 尺寸距离"都 < 0.005，够严
+func _has_duplicate_under(target: Node3D, center: Vector3, size: Vector3,
+		to_local: Transform3D) -> bool:
+	for c in target.get_children():
+		if not (c is MeshInstance3D):
+			continue
+		var mi: MeshInstance3D = c
+		var b: AABB = to_local * (mi.global_transform * mi.get_aabb())
+		if (b.position + b.size * 0.5).distance_to(center) < 0.005 \
+				and b.size.distance_to(size) < 0.005:
+			return true
+	return false
+
+## 裙摆外扩（2026-10-08，用户要求"裙子穿模有点严重，往外扩一扩"）。
+##
+## 现象：裙子那圈裙板和她的腿/胯在空间上是**互相插着**的（实测裙板 × 腿件重叠 105 对），
+## 近景一看腿就从裙面里捅出来 ✗。
+##
+## ⚠️ **第一版是错的，而且错得很难看** ✗ —— 第一版对 global_transform 乘了一个
+## **世界空间的水平缩放** Basis.scaled(k,1,k)，想着"整圈裙摆一起外扩"。
+## 结果：这些裙板是**绕圈斜着摆**的（每块朝向都不同，实测同骨下各块 Z 角 28.9° / 73.9° /
+## -36.1°…），而**世界空间的非等比缩放作用在旋转过的基上就是剪切** ——
+## 板子被拉成平行四边形，贴图边缘变成斜线，看着完全就是"裙子建模坏了 / 穿模" ✗。
+## 实测：50/50 块全被剪切（基向量归一化后互点积最大 0.107），关掉外扩后 0/50 ✓。
+##
+## ✅ 现在只做两件**不产生剪切**的操作：
+##   ① 沿板子**自身轴等比放大**（`mi.scale *= grow`）—— 等比缩放与旋转可交换，
+##      不会把斜板子拉歪（世界空间的非等比缩放才会）；
+##   ② 沿**径向平移**（`mi.global_position += radial * push * t`）—— 平移只改原点、
+##      **不改基向量**，所以也不歪。
+##   推的力度按"离腰多高"给（t：腰 0 → 摆 1），所以**裙腰贴着身体不动、越往下越往外张** ✓，
+##   而不是把整圈平推出去（那样腰部会离开身体，露出一圈缝 ✗）。
+##
+## 为什么不改模型文件：模型是游戏原版导出的 glb，改了以后换版本要重做一遍；
+## 这里是运行时补偿，参数挂在宿主上（`skirt_expand`，1.0 = 关闭），随时能调、能对比。
+func _expand_skirt() -> void:
+	var k: float = pet.skirt_expand
+	if is_equal_approx(k, 1.0):
+		return
+	var model: Node3D = pet._model
+	var to_model: Transform3D = model.global_transform.affine_inverse()
+	var grow: float = 1.0 + (k - 1.0) * 0.5      # 自身轴等比放大，温和一点
+	var push: float = (k - 1.0) * 0.35           # 径向推出去的总距离（模型单位）
+	var waist_y := 1.45                          # 裙腰 / 裙摆高度（实测：顶部 1.4~1.45，下摆 ~0.95）
+	var hem_y := 0.95
+	var n := 0
+	var stack: Array[Node] = [model]
+	while not stack.is_empty():
+		var nd: Node = stack.pop_back()
+		for c in nd.get_children():
+			stack.push_back(c)
+		if not (nd is MeshInstance3D):
+			continue
+		var mi: MeshInstance3D = nd
+		var par := mi.get_parent()
+		# 裙板判据：父骨叫 SkirtBone*（这个模型里整条裙子都挂在它下面）
+		if par == null or not String(par.name).begins_with("SkirtBone"):
+			continue
+		var box: AABB = to_model * (mi.global_transform * mi.get_aabb())
+		var ctr: Vector3 = box.position + box.size * 0.5
+		var radial := Vector3(ctr.x, 0.0, ctr.z)
+		if radial.length() < 0.05:
+			continue            # 贴着中线的块没有"径向"可言，不动它
+		radial = radial.normalized()
+		var t: float = clampf((waist_y - ctr.y) / (waist_y - hem_y), 0.0, 1.0)
+		# ① 自身轴等比放大（不会歪）
+		mi.scale *= grow
+		# ② 径向平移（不会歪；`radial` 在模型空间，转成世界方向再加）
+		mi.global_position += model.global_transform.basis * (radial * push * t)
+		n += 1
+	if OS.is_debug_build():
+		print("[PetDeek] 裙摆外扩 ×%.3f：%d 块（自身轴等比 + 径向平移，两者都不产生剪切）" % [k, n])
+
+## 找 origin 关于 x=0 的镜像骨头，取最近且近于 CROSSED_MIRROR_TOL 的那根。
+## 名字不能用（见 _fix_crossed_parts 上面那段），只能比位置。
+func _find_mirror_bone(bones: Array[Node3D], origin: Vector3, exclude: Node3D,
+		to_local: Transform3D) -> Node3D:
+	var best: Node3D = null
+	var best_d := CROSSED_MIRROR_TOL
+	for b in bones:
+		if b == exclude:
+			continue
+		var o: Vector3 = to_local * b.global_transform.origin
+		var d: float = absf(o.x + origin.x) + absf(o.y - origin.y) + absf(o.z - origin.z)
+		if d < best_d:
+			best_d = d
+			best = b
+	return best
 
 ## 找"某条腿"的骨骼节点。两个坑：
 ##   1. Godot 导入 glb 时会给重名节点加数字后缀，骨骼实际叫 LeftLeg9 / LeftFoot13
@@ -274,7 +524,11 @@ func _action_time(name: String, extra: float = 0.35) -> float:
 ## 逐个量出一次性动作"真正做到哪一刻"（结果写进 pet._action_end）。
 ## 判据、阈值、以及"为什么不能按全长计时"都在 **pet_rig_stats.gd**（作业单 B3.1）
 func _measure_action_ends() -> void:
+	# 阶段 5：同上，第二贵的一步（13 个动作 × 32 次采样 × 64 个节点）✓
+	if RigCache.load_action_ends(pet):
+		return
 	RigStats.measure_action_ends(pet)
+	RigCache.save_action_ends(pet)
 
 func _pick(names: Array, fallback: String) -> String:
 	var pool: Array[String] = []

@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends RefCounted
 ## 和操作系统打交道的那两件事：**开机自启动** 和 **隐藏任务栏图标**。
 ## （由 desktop_pet.gd preload 为 PetShell）

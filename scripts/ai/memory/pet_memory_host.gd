@@ -70,6 +70,8 @@ func refresh_persona(_user_text: String = "") -> void:
 	var text: String = PetPersona.build({
 		"name": _host.chat_persona_name,
 		"extra": _host.chat_system_prompt,
+		# 本地小模型加示例对话（小模型抄示例比守规则强，云端大模型不加）
+		"small": _host.chat_url.contains(_host.LOCAL_AI_MARK),
 	})
 	if _host._chat != null:
 		_host._chat.system_prompt = text
@@ -98,6 +100,8 @@ func context_for(query: String) -> String:
 	_host._last_talk_ms = now_ms
 	return PetPersona.build_context({
 		"user_text": query,
+		"name": _host.chat_persona_name,   # 收尾锚点要叫她的名字（小模型拐杖，见 pet_persona）
+		"small": _host.chat_url.contains(_host.LOCAL_AI_MARK),
 		"memory": _host.memory if _host.memory_enabled else null,
 		"state_text": pet_state_text(),
 		# 当前心情：**一段拼好的话**（主导维一句 + 次要维一句 + "别报数值"的约束）。
@@ -105,6 +109,26 @@ func context_for(query: String) -> String:
 		"mood_text": _host._mood.describe(),
 		"gap_min": gap_min,            # 距上次说话多久 —— 配合 PetPersona.now_line() 的实时时间
 		"started_at": _host._started_at,   # 几点启动的，让她对"启动"有概念
+		"rel_text": _relation_text(),      # 关系的规模感（见下）
+	})
+
+## "你和主人的关系"那一段（认识多少天 / 连着多少天 / 今天第几次打开 / 今天聊了几轮）。
+##
+## ── 为什么和 gap_min 分开 ──────────────────────────────────────────────────
+## `gap_min` 只答"距上次说话多久"，而且**门槛 30 分钟**；它答不了规模感。
+## 两件事的**归属也不同**：gap 从记忆的 `last_chat` 来，规模感从日记的关系线来，
+## 所以拼装那边（pet_diary.relation_text）也不在本文件。
+##
+## **记忆关掉时直接返回 ""**：那些计数就存在记忆文件里（pet_memory），
+## 关掉记忆 = 不读那个文件 ⇒ 计数也不该拿出来用，否则她会对一个"没有记忆"的主人
+## 说"我们认识 200 天了"（自相矛盾）。
+func _relation_text() -> String:
+	if not _host.memory_enabled or _host.memory == null or _host._diary == null:
+		return ""
+	return _host._diary.relation_text({
+		"sessions_total": _host.memory.sessions_total,
+		"sessions_today": _host.memory.sessions_today,
+		"chats_today": _host.memory.chats_today,
 	})
 
 ## 她"刚在做什么"。写进人设的【现在】那一段，让回复带点当下的小动作，
@@ -154,7 +178,7 @@ func note_reply(reply: String, given: Array = []) -> void:
 	_host._opts_kind_override = ""
 	# given 非空 = 候选已经**跟着那句话一起**给出来了（她自己先开口那条，见 _send_first）——
 	# 那就直接用，不再为按钮多发一次请求
-	# GPU 自动透视中（打游戏）：**一律不递候选按钮**（2026-10-03 用户要求）。
+	# GPU 忙（打游戏 / 跑重活）：**一律不递候选按钮**（2026-10-03 用户要求）。
 	# 判断放这一层：要不要给按钮本来就是宿主的决定。pet_quick 那边也留了一道
 	# （after_reply / show_given 开头都看 _gpu_busy），双保险
 	if not _host._gpu_busy:

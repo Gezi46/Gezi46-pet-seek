@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 一次性（非流式）请求：给"记忆抽取 / 摘要 / 候选句子"这类后台小任务用。
 ##
 ## 从 pet_chat.gd 搬出来（作业单 B1.3）。它**自带一条连接**（和聊天那条互不排队），

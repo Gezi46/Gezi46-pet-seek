@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 验"离线假死"：联系不上 AI 服务时，她只保留基础功能。
 ##
 ## 停掉的（都是会**自己发起**的事）：主动说话、生闷气、定时偷看、定时看摄像头、

@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 真机联调自检：把代码真正会走的**四条路**各跑一遍。**需要配好一个能用的 AI 服务**。
 ##

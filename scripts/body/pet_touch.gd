@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 「被摸到的反应」：摸头 / 摸胸 / 摸手……她说什么、播什么动作、要不要记一笔。
 ##
 ## 从 desktop_pet.gd 搬出来（作业单 B6.1）。为什么值得独立：这是**一条完整的互动链** ——
@@ -71,6 +68,11 @@ func on_line(line: String, attack: bool, worth_noting: bool) -> void:
 func on_overflow() -> void:
 	_host._play_action("attacked" if _host._has.has("attacked") else _host._idle_anim, 0.1)
 	_host.go_idle()
+	# 日记：手欠到她会主动喊停，这天值得记一笔。
+	# **守卫别删** —— 这个文件 PC / 安卓共用，而安卓宿主没有 `_diary_note`
+	# （理由同 pet_chat_flow.gd 里那条注释）
+	if _host.has_method("_diary_note"):
+		_host._diary_note("annoy")
 	# 记忆这一笔用**本地规则**先落下：不管 AI 通不通、花不花那次请求，这事都得记住。
 	# 半小时内不重复记（和生闷气共用同一条"烦了"的节流），否则一晚上能存十条同义句
 	if _host.memory_enabled and _host.memory != null and _host._mood.should_store_touch():

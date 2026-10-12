@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 分析贴图：alpha 分布，以及"完全透明但紧邻不透明"的那圈像素是什么颜色。
 ## 如果那圈颜色偏白/偏亮，线性过滤就会把它混进边缘 —— 那就是白边的来源。

@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 复现并验证一个状态卡死 bug：
 ## 走路中点一下角色（几乎不移动鼠标）→ _begin_drag() 把 _state 设成 DRAG 并播 jump，

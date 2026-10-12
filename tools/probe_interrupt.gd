@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 验证一个猜想：动作 A 还没播完就被动作 B 打断时，
 ## Godot 会不会在 B 播放期间补发 animation_finished(A)？

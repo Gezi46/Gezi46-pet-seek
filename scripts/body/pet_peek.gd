@@ -27,8 +27,25 @@ const PEEK_RETRY_SEC := 15.0
 const PROMPT_PEEK := "（这是主人屏幕现在的样子。看一眼他在干什么，就着画面说一句话。" \
 	+ "只说你真看到的东西，别猜他在玩什么 —— 独占全屏的游戏不会出现在这种截图里，" \
 	+ "所以画面只剩桌面时，别硬说他在用某个软件，随口问一句他在忙什么就好）"
-## 摄像头那条的提示词
-const CAMERA_QUESTION := "（用摄像头看一下主人这边，随便说说你看到的，一两句就好）"
+## 摄像头那条的提示词。
+##
+## 后半句是 2026-10-09 加的（用户实测报的"瞎说话"）：手机/平板**平放着**的时候，
+## 摄像头对着的是**天花板** ✗ —— 画面里根本没有"主人"。而模型不会说"我看不清"，
+## 它会顺着这句话把自己的想象编成一个故事（她当时张口就来"你在看手机、杯子空了" ✗）。
+## 所以这里明说"看不清就直说"，并且 camera_shot() 发之前还会先量一遍画面（纯色就压根不发 ✓）
+const CAMERA_QUESTION := "（你抬眼看了一眼主人这边。别当「描述画面」的任务来做 —— " \
+	+ "像你抬头瞥了一眼、顺口跟他说一句那样，挑你真注意到的一两处说，口气照你平时的来；" \
+	+ "别一件件报画面里有什么，也别写成解说。" \
+	+ "要是画面是空的、糊的，或者只有天花板/墙/桌面（设备平放时对着的就是这些），" \
+	+ "就直接说看不清、问他在哪儿 —— 别猜，更别编他在干嘛。" \
+	+ "另外这张图可能没有颜色（手机上的摄像头有时只给明暗）—— 那就别聊颜色）"
+## 画面有、但没内容时说的话（纯色 / 全黑 / 被挡住 / 对着天花板）。
+## 为什么专门备一句：不这么说只有两个下场 —— 要么说"看不到画面"（其实拿到了 ✓ 误导排查 ✗），
+## 要么把那张纯色图发给模型（它一定会编 ✗，2026-10-09 用户实测）
+const LINES_CAMERA_BLANK: Array[String] = [
+	"唔…我这边看到的是一片空空的，你是把设备放平了吗？",
+	"诶？我这边什么都看不清呀，是不是挡着了？",
+]
 
 var _host = null
 
@@ -244,6 +261,8 @@ func camera_look() -> void:
 		#   "有设备没画面" = 被占用，或者笔记本的摄像头硬开关/快捷键关着
 		if _host._camera_last_error.find("没能取到画面") >= 0:
 			_host._say("我这边有摄像头，但看不到画面诶…")
+		elif _host._camera_last_error.find("几乎是纯色") >= 0:
+			_host._say(LINES_CAMERA_BLANK[randi() % LINES_CAMERA_BLANK.size()])
 		elif OS.get_name() == "Windows":
 			# 说清楚是"我这边不行"，而不是"你的相机有问题" ——
 			# 免得主人跑去折腾驱动、权限、设备管理器（实测那些全都是好的）
@@ -286,22 +305,49 @@ func camera_shot() -> String:
 		if OS.is_debug_build():
 			print("[PetDeek] %s" % _host._camera_last_error)
 		return ""
-	var feed: CameraFeed = CameraServer.get_feed(_host.camera_index)
+	var feed: CameraFeed = _pick_feed()
 	if feed == null:
-		_host._camera_last_error = "枚举到设备了，但拿到的 feed 是空的"
+		_host._camera_last_error = "枚举到设备了，但拿不到可用的 feed"
 		return ""
+	# ⚠️ **必须先选格式**才能激活（2026-10-09 真机 logcat 实测，安卓）：
+	#   ERROR: CameraFeed format needs to be set before activating.
+	#          Selected format index: -1 (formats size: 65)
+	#          at: activate_feed (modules/camera/camera_android.cpp:230)
+	# 引擎给了 65 个候选，一个都没选 → 激活直接失败 ✓（Windows 上根本枚举不到设备，
+	# 所以这条以前从来没露过头 ✓）。先挑第 0 个：具体哪个格式画质/比例最好，以后按需再调 ✓
+	# ⚠️ feed 已经在播的时候再 set_format 会报错（真机：at set_format camera_android.cpp:358 ✗）
+	var formats: Array = feed.get_formats()
+	if not feed.is_active() and not formats.is_empty():
+		var fi := _pick_format_index(formats)
+		feed.set_format(fi, formats[fi])
+		if OS.is_debug_build():
+			print("[PetDeek] 选了格式 #%d / 共 %d 档：%s" % [fi, formats.size(), str(formats[fi])])
 	if not feed.is_active():
 		feed.set_active(true)
-	var img: Image = null
-	for i in 300:                     # 60fps × 300 ≈ 5 秒
-		var tex: Texture2D = feed.get_texture(CameraServer.FEED_RGBA_IMAGE)
-		if tex != null and tex.get_width() > 0:
-			img = tex.get_image()
-			if img != null and not img.is_empty():
-				break
-		await _host.get_tree().process_frame
+	var img: Image = await _grab_camera_frame(feed)
 	if img == null or img.is_empty():
-		_host._camera_last_error = "摄像头在，但没能取到画面（可能被别的程序占用，或者笔记本的摄像头开关/快捷键关着）"
+		_host._camera_last_error = "摄像头在，但没能取到画面（可能被别的程序占用，或者摄像头开关/快捷键关着）"
+		if OS.is_debug_build():
+			print("[PetDeek] %s" % _host._camera_last_error)
+		return ""
+	# YCbCr 的 feed 给的是"Y 在 R、G/B 空"的假红图 ✗ → 掰成诚实的灰度（见 _collapse_to_gray ✓）
+	#（真 RGBA 的机子不动它 ✓ —— Linux 那边的颜色是真的 ✓）
+	var dt := feed.get_datatype()
+	if dt == CameraFeed.FEED_YCBCR or dt == CameraFeed.FEED_YCBCR_SEP:
+		img = _collapse_to_gray(img, 480)
+	# ⚠️ 发出去之前先量一眼"这张图有没有信息量"（2026-10-09，用户实测报的"瞎说话"）：
+	#   设备平放着 → 摄像头对着天花板 → 画面几乎是**一块纯色** ✗。
+	#   这种图连人眼都看不出东西，发给模型它只会编 —— 她当时说"你在看手机、杯子空了"，
+	#   而实际画面里只有天花板 ✓。判据两条：亮度标准差太小、或某一种颜色占了绝大多数采样点
+	var st := _image_stats(img)
+	if OS.is_debug_build():
+		print("[PetDeek] 相机这帧的信息量：亮度均值 %.3f ｜ 标准差 %.4f ｜ 最大同色占比 %.2f" % [
+			st["mean"], st["std"], st["same"]])
+		# 真机排查专用：把这一帧落盘，adb 拉出来**亲眼看**她收到了什么 ✓
+		#（怀疑"她是不是瞎说话"时，这是唯一能定案的证据 ✓）
+		img.save_jpg("user://cam_last.jpg", 0.85)
+	if float(st["std"]) < 0.02 or float(st["same"]) > 0.92:
+		_host._camera_last_error = "画面几乎是纯色（对着天花板 / 被挡住 / 全黑）—— 没信息量，不发"
 		if OS.is_debug_build():
 			print("[PetDeek] %s" % _host._camera_last_error)
 		return ""
@@ -315,3 +361,235 @@ func camera_shot() -> String:
 		return ""
 	_host._camera_last_error = ""
 	return "data:image/jpeg;base64," + Marshalls.raw_to_base64(jpg)
+
+## 挑一个 feed。手机上**前后是两个 feed**（2026-10-09 真机确认 ✓），
+## 而"她看一眼"要看的是**前置** —— 对着主人那张脸 ✓，不是后置（对着桌子/天花板 ✗）。
+## 用户 2026-10-09 就是拿这句点醒的：「手机分前后摄像头 你用前摄像头」✓
+##
+## 宿主的 `camera_position`：0 = 前置优先（默认 ✓）/ 1 = 只要前置 / 2 = 用后置。
+## 桌面宿主没有这个字段（它那边枚举恒 0，根本走不到这儿 ✓），所以用 Object.get 取，
+## 取不到就按 0 —— 别写成 `_host.camera_position`（桌面上会 "Invalid get index" ✗）
+func _pick_feed() -> CameraFeed:
+	var n := CameraServer.get_feed_count()
+	if n <= 0:
+		return null
+	var front: CameraFeed = null
+	var back: CameraFeed = null
+	var fallback: CameraFeed = null
+	var lines := ""
+	for i in n:
+		var f: CameraFeed = CameraServer.get_feed(i)
+		if f == null:
+			continue
+		if i == _host.camera_index:
+			fallback = f
+		match f.get_position():
+			CameraFeed.FEED_FRONT:
+				if front == null:
+					front = f
+			CameraFeed.FEED_BACK:
+				if back == null:
+					back = f
+		if OS.is_debug_build():
+			lines += " #%d「%s」位置=%d" % [i, f.get_name(), f.get_position()]
+	if OS.is_debug_build():
+		print("[PetDeek] 摄像头枚举到 %d 个：%s" % [n, lines])
+	if fallback == null:
+		fallback = CameraServer.get_feed(0)
+	var want := _want_position()
+	if want == 2:
+		return back if back != null else fallback
+	if front != null:
+		return front                                  # 默认（0）和"只要前置"（1）都走这条 ✓
+	if back != null:
+		return back
+	return fallback                                   # 位置没报上来的设备（FEED_UNSPECIFIED）✓
+
+## 宿主想让用哪个位置（见 _pick_feed）。台式宿主没这个字段 → 按默认 0 ✓
+func _want_position() -> int:
+	var v: Variant = _host.get("camera_position")
+	return int(v) if v != null else 0
+
+## 从引擎给的格式表里挑一档"真能跑起来"的。
+## 真机实测（2026-10-09，安卓）：格式表**按分辨率从大到小**排，第 0 个是 4608×3456（12MP）；
+## 选它时摄像头激活成功、却**一帧都不吐**（CameraTexture 恒 (0,0) → 读回来全黑 ✗）。
+## 所以挑"离 1280×720 最近"的那档，并且尽量别超过 1920（省带宽，也不容易开不起来 ✓）
+func _pick_format_index(fm: Array) -> int:
+	var best := 0
+	var best_score := -1.0
+	for i in fm.size():
+		var d: Dictionary = fm[i]
+		var w := float(d.get("width", 0))
+		var h := float(d.get("height", 0))
+		if w <= 0.0 or h <= 0.0:
+			continue
+		var score := absf(w - 1280.0) + absf(h - 720.0)
+		if w > 1920.0:
+			score += 10000.0           # 大过 1080p 的直接排到后面去 ✓
+		if best_score < 0.0 or score < best_score:
+			best_score = score
+			best = i
+	return best
+
+## 量一张图"有多空"：亮度均值、标准差、以及"出现最多的那种颜色占多少比例"。
+## 只抽大约 4000 个点（等步长撒网 ✓）—— 这一帧本来就要压成 JPEG 发走，
+## 多花几毫秒换"不发一张纯色图去喂模型"完全值得 ✓
+func _image_stats(img: Image) -> Dictionary:
+	var step := maxi(1, int(sqrt(float(img.get_width() * img.get_height()) / 4000.0)))
+	var n := 0
+	var sum := 0.0
+	var sum2 := 0.0
+	var counts := {}
+	for y in range(0, img.get_height(), step):
+		for x in range(0, img.get_width(), step):
+			var c := img.get_pixel(x, y)
+			var l := (c.r + c.g + c.b) / 3.0
+			sum += l
+			sum2 += l * l
+			# 颜色按 1/16 档粗分：跟"这几种颜色各自占多少"比精确值更抗噪 ✓
+			var key := "%d_%d_%d" % [int(c.r * 16.0), int(c.g * 16.0), int(c.b * 16.0)]
+			counts[key] = int(counts.get(key, 0)) + 1
+			n += 1
+	var f := maxf(1.0, float(n))
+	var mean := sum / f
+	var top := 0
+	for k in counts.keys():
+		top = maxi(top, int(counts[k]))
+	return {
+		"mean": mean,
+		"std": sqrt(maxf(0.0, sum2 / f - mean * mean)),
+		"same": float(top) / f,
+		"n": n,
+	}
+
+## 从 feed 里取一帧 Image。整段最"脏"的地方，六条经验全是真机踩出来的：
+##   ① **CameraFeed 没有 `get_texture()`** ✗（真机报 Nonexistent function）；
+##      正路是 `CameraTexture`（Texture2D，靠 camera_feed_id 挂在某个 feed 上 ✓）
+##   ② 那个"取哪一路图像"的成员叫 **`which_feed`** ✗（不是文档里写的 feed_image_type ✓）
+##   ③ 这个引擎里 `FEED_RGBA_IMAGE` / `FEED_YCBCR_IMAGE` / `FEED_Y_IMAGE` **全是 0** ✗
+##      （探针量出来的 ✓）→ "单独取亮度那一路"根本不存在，别再试了 ✓
+##   ④ 安卓的 feed 是 **FEED_YCBCR_SEP**（Y 与 CbCr 分两路）→ 从 CameraTexture 取到的是
+##      **串了路的图** ✗：用户 2026-10-09 实测"全是红的、糊糊的、一片暗"，而当时
+##      **人脸就在镜头前** ✓（形状还在、颜色全错 = 典型的 YUV 被当 RGB 用 ✓）
+##   ⑤ 文档里**唯一**说引擎会替我们合成 YCbCr→RGB 的地方是"把相机设成 **环境背景**" ✓
+##      → 正路 = 开一个带自己 World3D 的 SubViewport、背景设成 BG_CAMERA_FEED ✓（彩色 ✓）；
+##      CameraTexture 那条降为**兜底**（Linux 那边本来就是 RGB ✓，走它能成 ✓）
+##   ⑥ **第一帧的曝光还没收敛**（头几百毫秒本来就是黑的 ✗）→ 等 ~0.8 秒再抓 ✓
+## 把"Y 塞在 R 上"的假红图掰成**诚实的灰度图**。
+##
+## 真机实测（2026-10-09，安卓）：拿回来的那张图 **G/B 是空的**（R 均值 91.8 ／ G 0.3 ／ B 0.4 ✗）、
+## 而亮点样例是 (131,1,0) (150,0,1) —— 也就是 Y（亮度）被塞进了 R 通道 ✓。
+## 直接发出去 = 一张**假红图** ✗：形状对、颜色全假，她一提颜色就是错的（她当时就说"全是红的" ✗），
+## 而真实场景到底是什么颜色，我们**并不知道** ✗ → 那就别装 ✓：给一张灰度图 ✓，
+## 提示词里也明说了"可能没有颜色，别硬报颜色" ✓。
+##
+## 为什么不用 shader 干（2026-10-09 试过 ✗）：ShaderMaterial 挂在 TextureRect 上、
+## 真机读回来 G/B 依然是 0 ✗ —— 既看不出是没编过、还是 SubViewport 那层不认，
+## 也不值得再赌一轮 ✗。这里就是缩到目标宽度、再把 R 铺到三路 ✓：
+## 缩了之后是 480×360 量级（≈17 万像素 ✓），GDScript 里跑一遍也就几百毫秒 ✓，稳 ✓
+func _collapse_to_gray(img: Image, target_w: int) -> Image:
+	if img.get_width() > target_w:
+		var r := float(target_w) / float(img.get_width())
+		img.resize(target_w, maxi(1, int(img.get_height() * r)), Image.INTERPOLATE_BILINEAR)
+	img.convert(Image.FORMAT_RGB8)
+	var data := img.get_data()
+	var n := img.get_width() * img.get_height()
+	for i in n:
+		var lum := data[i * 3]
+		data[i * 3 + 1] = lum
+		data[i * 3 + 2] = lum
+	return Image.create_from_data(img.get_width(), img.get_height(), false, Image.FORMAT_RGB8, data)
+
+func _grab_camera_frame(feed: CameraFeed) -> Image:
+	# ⚠️ 顺序是量出来的：**先走 CameraTexture**（真机实测能拿到 960×720 的真画面 ✓），
+	# 环境背景那条（BG_CAMERA_FEED）在这台 + GLES3 上是**全黑** ✗ → 只当兜底 ✓
+	var img := await _grab_via_texture(feed)
+	if img != null and not img.is_empty():
+		var s := _image_stats(img)
+		if float(s["std"]) > 0.02 and float(s["same"]) < 0.92:
+			return img                      # 有内容 ✓
+	if OS.is_debug_build():
+		print("[PetDeek] CameraTexture 那条没内容 → 试环境背景兜底")
+	return await _grab_via_environment(feed)
+
+## 正路：把相机设成**环境背景**，让引擎自己做 YCbCr→RGB（见头部 ⑤）
+func _grab_via_environment(feed: CameraFeed) -> Image:
+	var sub := SubViewport.new()
+	sub.size = Vector2i(1280, 720)          # 跟我们挑的那档格式一致 → 不拉伸、不裁 ✓
+	sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	sub.own_world_3d = true
+	var w := World3D.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CAMERA_FEED
+	env.background_camera_feed_id = feed.get_id()
+	w.environment = env
+	sub.world_3d = w
+	sub.add_child(Camera3D.new())           # 3D 视口得有个相机，背景才是它渲出来的 ✓
+	_host.add_child(sub)
+	feed.set_active(true)
+	var out: Image = null
+	for i in 300:                           # 60fps × 300 ≈ 5 秒（含前面的曝光收敛 ✓）
+		await _host.get_tree().process_frame
+		if i < 48 or i % 15 != 0:
+			continue                        # 前 0.8 秒别读（读也是黑的）；之后每 15 帧试一次
+		out = sub.get_texture().get_image()
+		if out != null and not out.is_empty():
+			var st := _image_stats(out)
+			if float(st["std"]) > 0.02 and float(st["same"]) < 0.92:
+				break
+	sub.queue_free()
+	if OS.is_debug_build():
+		print("[PetDeek] 环境背景：%s ｜ %s" % [
+			"空 ✗" if out == null or out.is_empty() else "%dx%d" % [out.get_width(), out.get_height()],
+			"{}" if out == null or out.is_empty() else str(_image_stats(out))])
+		if out != null and not out.is_empty():
+			out.save_jpg("user://cam_env.jpg", 0.9)      # 亲眼看用 ✓
+	return out
+
+## 兜底：走 CameraTexture（见头部 ①②④）。安卓上颜色会串 ✗，Linux 那边才是对的 ✓
+func _grab_via_texture(feed: CameraFeed) -> Image:
+	var tex := CameraTexture.new()
+	tex.camera_feed_id = feed.get_id()
+	var route := ""
+	for p in ["feed_image_type", "which_feed"]:
+		if tex.get(p) != null:
+			route = p
+			break
+	if route != "":
+		tex.set(route, CameraServer.FEED_RGBA_IMAGE)
+	tex.camera_is_active = true
+	var sub := SubViewport.new()
+	sub.size = Vector2i(960, 720)
+	sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	var rect := TextureRect.new()
+	rect.texture = tex
+	rect.size = Vector2(sub.size)
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	# 这张图里的"颜色"是假的（Y 在 R、G/B 空 ✗）→ 读回来之后由调用方掰成灰度 ✓
+	#（见 _collapse_to_gray：真机上试过用 shader 在渲染这层抹，没成 ✗）
+	sub.add_child(rect)
+	_host.add_child(sub)
+	var waited := 0
+	while tex.get_size().x <= 0.0 and waited < 300:          # 等纹理被相机填起来 ✓
+		await _host.get_tree().process_frame
+		waited += 1
+	if OS.is_debug_build():
+		print("[PetDeek] CameraTexture：等了 %d 帧 → %s" % [waited, str(tex.get_size())])
+	if tex.get_size().x <= 0.0:
+		sub.queue_free()
+		return null
+	for i in 48:                                             # 曝光收敛 ✓
+		await _host.get_tree().process_frame
+	var img: Image = null
+	for i in 40:
+		await _host.get_tree().process_frame
+		img = sub.get_texture().get_image()
+		if img != null and not img.is_empty():
+			break
+	sub.queue_free()
+	if OS.is_debug_build() and img != null and not img.is_empty():
+		print("[PetDeek] CameraTexture：%dx%d ｜ %s" % [
+			img.get_width(), img.get_height(), str(_image_stats(img))])
+		img.save_jpg("user://cam_texture.jpg", 0.9)
+	return img

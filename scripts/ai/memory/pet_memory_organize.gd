@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 记忆的"管理与整理"模块 —— 负责把同一件事的**近义条目**合并成一条（去重）。
 ## 2026-09-30 用户要求：专门给记忆加一个"整理"模块，解决"同一件事被抽成 N 条近义"的问题
 ## （就是"壁纸 / boss 被反复强化"的那把刀：存档里"挑壁纸"被存了 4 条、"boss"存了 2 条）。
@@ -88,7 +85,8 @@ static func merge_into(mem, text: String, importance_boost: float = 0.0,
 		best.consolidated = true
 		if importance_boost > 0.0:
 			best.importance = clampf(float(best.importance) + importance_boost, 0.0, 1.0)
-			best.layer = mem.layer_of(float(best.importance), float(best.intensity))
+			# 分层只升不降（层号越小越高）—— 理由见 pet_memory_forget.decay
+			best.layer = mini(int(best.layer), mem.layer_of(float(best.importance), float(best.intensity)))
 		if t.length() > String(best.text).length():
 			best.text = t
 		return OUT_MERGED

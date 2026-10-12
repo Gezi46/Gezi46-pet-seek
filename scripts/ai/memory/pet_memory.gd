@@ -221,6 +221,17 @@ var items: Array = []
 var last_chat: int = 0
 var last_error: String = ""
 
+# ── 关系计数（2026-10-10 加，给"关系感知"用）。
+# 这几个是"她和主人之间"的规模感：被打开过多少次、今天第几次、今天聊了几轮。
+# **放这儿而不是 pet_diary**：日记可以被关掉（diary_enabled=false 时它连"认识多少天"
+# 都不该生效），而"她见过你多少面"这件事不该因为她关了一本日记就归零。
+# 和 last_chat 同源（都是"跨会话的历史"），所以跟它做伴，一起读写清
+var sessions_total: int = 0
+## 上次记的是哪一天（"YYYY-MM-DD"）。今天的两个计数靠它翻篇
+var sessions_day: String = ""
+var sessions_today: int = 0
+var chats_today: int = 0
+
 ## 抽取规则：第 1 个捕获组是要记住的那句话。
 ## 顺序有讲究：先具体的（生日、名字），后宽泛的（喜欢），否则"我生日是 3 月"会被"我是…"吃掉
 const RULES: Array[Dictionary] = [
@@ -242,6 +253,10 @@ func load_from_disk() -> void:
 	working.clear()
 	items.clear()
 	last_chat = 0
+	sessions_total = 0
+	sessions_day = ""
+	sessions_today = 0
+	chats_today = 0
 	if not FileAccess.file_exists(file_path):
 		return
 	var f := FileAccess.open(file_path, FileAccess.READ)
@@ -270,6 +285,12 @@ func load_from_disk() -> void:
 					_ensure_kind(it)     # 旧档案没 kind：载入时按前缀补（见 _ensure_kind）
 					items.append(it)
 	last_chat = int(d.get("last_chat", 0))
+	# 关系计数：老存档没有这几个键 → 默认 0（**这正是我们要的**：
+	# 首次用新版本的存档，计数从这次开始，不会凭空多出一堆"见过 N 面"）
+	sessions_total = int(d.get("sessions_total", 0))
+	sessions_day = String(d.get("sessions_day", ""))
+	sessions_today = int(d.get("sessions_today", 0))
+	chats_today = int(d.get("chats_today", 0))
 
 func save() -> void:
 	var arr: Array = []
@@ -285,6 +306,10 @@ func save() -> void:
 		"working": working,
 		"items": arr,
 		"last_chat": last_chat,
+		"sessions_total": sessions_total,
+		"sessions_day": sessions_day,
+		"sessions_today": sessions_today,
+		"chats_today": chats_today,
 	}, "  "))
 	f.close()
 
@@ -293,7 +318,41 @@ func clear() -> void:
 	working.clear()
 	items.clear()
 	last_chat = 0
+	# 清空记忆 = "她忘了你"。**关系计数一起清**才对：留着"见过 300 面"而档案是空的，
+	# 她会说"我们认识很久了"却不知道你叫什么 —— 那比清零更出戏
+	sessions_total = 0
+	sessions_day = ""
+	sessions_today = 0
+	chats_today = 0
 	save()
+
+# ------------------------------------------------------------------ 关系计数
+
+## 今天（"YYYY-MM-DD"）。翻篇判定用它，和日记那边同一套格式
+static func _day_stamp() -> String:
+	var dt := Time.get_datetime_dict_from_system()
+	return "%04d-%02d-%02d" % [int(dt["year"]), int(dt["month"]), int(dt["day"])]
+
+## 跨天就把"今天"的两个计数归零。**每次记之前都调它**，
+## 不然她凌晨跨过 0 点之后还接着昨天的数（"今天第 5 次打开"其实是昨天的）
+func _roll_day() -> void:
+	var today := _day_stamp()
+	if sessions_day == today:
+		return
+	sessions_day = today
+	sessions_today = 0
+	chats_today = 0
+
+## 她又被打（打开）了一次。开局调一次。**调用方负责 save()**（和 add() 同一个约定）
+func note_session() -> void:
+	_roll_day()
+	sessions_total += 1
+	sessions_today += 1
+
+## 主人跟她说了一轮。**调用方负责 save()**
+func note_chat_turn() -> void:
+	_roll_day()
+	chats_today += 1
 
 func is_empty() -> bool:
 	return items.is_empty() and profile.is_empty() and working.is_empty()
@@ -319,7 +378,9 @@ func add(text: String, importance_boost: float = 0.0, kind: String = KIND_FACT) 
 		existing.consolidated = true
 		if importance_boost > 0.0:
 			existing.importance = clampf(existing.importance + importance_boost, 0.0, 1.0)
-			existing.layer = layer_of(existing.importance, existing.intensity)
+			# 分层**只升不降**（层号越小越高）：同一件事被反复提起可以越记越牢，但不会
+			# 因为 importance 被遗忘曲线衰减过就掉层（原因见 pet_memory_forget.decay）
+			existing.layer = mini(existing.layer, layer_of(existing.importance, existing.intensity))
 		return
 	var it := Item.new()
 	it.text = t
@@ -397,7 +458,7 @@ func note_exchange(user_text: String, reply: String) -> void:
 				if String(b).strip_edges() != "":
 					bits.append(String(b))
 		var bit := user_text.strip_edges()
-		if not bits.has(bit):
+		if not is_backchannel(bit) and not bits.has(bit):
 			bits.append(bit)
 		while bits.size() > 2:
 			bits.pop_front()
@@ -408,12 +469,16 @@ func note_exchange(user_text: String, reply: String) -> void:
 
 ## 用模型返回的摘要覆盖工作记忆（叫 AI 干活的是上层，这里只管存）
 func apply_working_summary(summary: String, topics: Array, mood: String) -> void:
-	if summary.strip_edges() != "":
+	# 例句守卫和下面 topics 同款：0.8B 会把 WORKING_PROMPT 的示例摘要原样抄回来
+	if summary.strip_edges() != "" and not MemPrompt.is_example_copy(summary):
 		_set_working("summary", summary.strip_edges().substr(0, 300))
 	var kept: Array = []
 	for t in topics:
 		var s := String(t).strip_edges()
-		if s != "" and kept.size() < 5:
+		# 模型路径同样拦：提取模型什么档位都可能把追问当话题（存档这层兜底，不赌提示词）
+		if s == "" or is_backchannel(s) or MemPrompt.is_example_copy(s):
+			continue
+		if kept.size() < 5:
 			kept.append(s)
 	if not kept.is_empty():
 		working["open_topics"] = kept
@@ -872,8 +937,22 @@ func _profile_has(line: String) -> bool:
 			return true
 	return false
 
+## 追问/接话/感叹（「说的什么？」「你上一句？」「嗯嗯，然后呢」）——
+## 不是话题也不是摘要素材。收进去她下一轮就对着鬼影说话（2026-10-11 实测：
+## 主人打「你上一句？」是想纠正她，结果这句话自己成了话题，她越聊越懵）。
+## 真话题很少又短又拿问号/语气词收尾，误杀面很小，宁缺勿滥。
+## static：探针能离线验
+static func is_backchannel(s: String) -> bool:
+	var t := s.strip_edges()
+	if t.length() > 10:
+		return false
+	return t.ends_with("？") or t.ends_with("?") or t.ends_with("呢") \
+		or t.ends_with("吗") or t.ends_with("吧") or t.ends_with("啊")
+
 func _topic_of(user_text: String) -> String:
 	var t := user_text.strip_edges().replace("\n", " ")
+	if is_backchannel(t):
+		return ""
 	if t.length() > 16:
 		t = t.substr(0, 16) + "…"
 	return t
@@ -942,6 +1021,8 @@ func apply_extracted_facts(facts: Array) -> int:
 			continue
 		if s.begins_with("AI") or s.find("AI曾") >= 0 or s.find("AI建议") >= 0:
 			continue                       # 禁掉"AI对用户的建议"，见 FACT_PROMPT 第 3 条
+		if MemPrompt.is_example_copy(s):
+			continue                       # 小模型抄提示词例句的假事实，见 EXAMPLE_LINES 注释
 		var out := MemOrganize.merge_into(self, _tidy_sentence(s), 0.1, KIND_FACT)
 		if out != MemOrganize.OUT_SKIPPED:
 			n += 1

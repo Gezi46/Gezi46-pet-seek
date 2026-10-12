@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 严谨的眨眼干扰验证（第二版）：
 ##   - Engine.max_fps = 60，帧长稳定

@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 直接分析透明渲染图自身的 alpha 边缘：
 ## 沿水平扫描线找 alpha 从 0 跳到 1 的位置，看"边缘那一两个半透明像素"的颜色。

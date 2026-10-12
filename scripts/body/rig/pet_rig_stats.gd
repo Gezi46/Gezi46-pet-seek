@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 动画的**采样与统计**：一个一次性动作"真正做到哪一刻"、因此该计多长。
 ##
 ## 从 pet_rig.gd 搬出来（作业单 B3.1）。为什么值得单独一个文件：

@@ -12,21 +12,74 @@ extends RefCounted
 ## 用 tools/shoot_pose.gd 分别渲染 yaw=0 / yaw=180 验证过：180 那一侧能看到脸。
 const FACING_BASE := PI
 
+## "闲久了歇着"用的姿势。**别改成 sit** —— 那个动画在这个模型里不改变姿势
+## （渲染验证过，见 tick_sit 上面的说明）
+const REST_POSE := "sleep"
+
 ## 宿主（桌宠根节点）：读它的检查器参数 / 模型节点 / 内部状态
 var pet: Node3D = null
+
+## 连续待机了多久（秒）。**只在 IDLE 里累加**（在宿主的 _process 里），
+## 一走 / 一被拖就由 _start_idle / _begin_move 清零。
+## 用来判"闲久了，坐下歇着"（见 _start_idle）
+var _sit_accum: float = 0.0
 
 
 func setup(pet_node: Node3D) -> void:
 	pet = pet_node
 
 
+## 回到待机。在这个仓里它是**待机的唯一入口**，所以"闲久了坐下"挂在这儿最省事。
+##
+## 坐下用的是模型里现成的**静态姿势**（`sit`，0.001 秒）—— 循环播就等于保持那个姿势，
+## 起身由宿主 `_play()` 统一负责（只要重新播了动画就说明她动了，
+## 所以被摸 / 被喂 / 开始走都会自动站起来，不用每个调用点都喊一声）。
+##
+## 为什么不在这儿也管"起身"：那样得在十几个调用点各写一遍，
+## 漏一个就是"她都开始走了还坐着"
 func _start_idle(t: float) -> void:
 	pet._state = pet.State.IDLE
 	pet._speed = 0.0
 	pet._timer = t
 	pet._play(pet._idle_anim, 0.25)
 
+## 闲久了就**躺下来歇着**。**每帧在宿主 IDLE 分支里调**（见 desktop_pet.gd 的 _process）。
+##
+## ⚠️ **用的是 `sleep` 不是 `sit`**（2026-10-10 逐个姿势渲图量出来的）：
+## 这个模型里 **`sit` / `sneaking` / `extra1` 都不改变姿势** —— 播出来和站立一模一样
+## （`_play_pose_loop("sit")` 看着就是"她站着不动"）。只有 **`sleep`** 是真的躺/蜷。
+## 所以"坐一坐"在这个模型上只能做成"躺一会儿"，见 tools/probe_pose_dump.gd 那套渲染。
+##
+## 为什么不像最初那样挂在 `_start_idle` 里：那个函数**只在"走完一段"时**才被调到
+## （唯一入口是 `_step_move` 结尾），所以离线假死 / GPU 忙 / 骰子没中让她一直不走的时候，
+## 坐下**永远轮不到** —— 实测 accum 涨到 37 秒也没坐下。
+## 每帧自己查一遍就和走路循环彻底解耦了，语义也更准："只要她是待机状态、闲够了，就歇着"。
+##
+## 返回 true = 这一帧刚躺下（调用方不用管，返回值给探针/日志用）
+func tick_sit() -> bool:
+	if pet._resting or pet._sleeping:
+		return false
+	if pet.sit_after <= 0.0 or not pet._has.has(REST_POSE):
+		return false
+	if _sit_accum < pet.sit_after * pet.behavior_pace:
+		return false
+	pet._state = pet.State.IDLE
+	pet._speed = 0.0
+	# 躺下之后**至少**躺这么久：不然时间一到立刻起身，看着像抽搐
+	pet._timer = maxf(pet._timer, pet.sit_min / maxf(pet.anim_speed, 0.01))
+	# ⚠️ 顺序：`_play_pose_loop` 里会清 `_resting`（它是"她动了"的收尾之一），
+	# 所以**必须放在它之后**设 true —— 放前面会被它当场清掉，然后每帧重复触发
+	pet._play_pose_loop(REST_POSE)
+	pet._resting = true
+	if OS.is_debug_build():
+		print("[PetDeek] 闲了 %.0f 秒，躺下歇着" % _sit_accum)
+	return true
+
 func _begin_move() -> void:
+	# ⚠️ **清零不能放在函数开头**：这个函数在待机期间每隔几秒就会被叫一次
+	# （离线假死 / GPU 忙 / 骰子没中都会走到它），放在开头就把"闲了多久"每次抹掉，
+	# 计数永远攒不到 sit_after ⇒ 坐下从不触发（2026-10-10 实测踩了很久）。
+	# 所以清零只在**她真的起身走了**那一步做（见函数末尾）。
 	if pet._sleeping:
 		pet._timer = _idle_time()
 		return
@@ -60,6 +113,10 @@ func _begin_move() -> void:
 			pet._play_action(em, 0.15)
 			pet._state = pet.State.IDLE
 			return
+
+	# **到这一步 = 她真的要起身走了**，闲时计数在这儿清零（理由见函数开头那条）。
+	# 上面那些 return 都只是"这轮不动"，不该抹掉"闲了多久"
+	_sit_accum = 0.0
 
 	# （全屏安静**不再**挡跑步 / 缩短移动 —— 2026-10-01 用户要求删掉"全屏降低移动"那层）
 	pet._run = pet._rng.randf() < pet.run_chance

@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 429（模型太挤）自动重试：**只负责决定**，不碰连接。
 ##
 ## 从 pet_chat.gd 搬出来（作业单 B1.3）。免费额度的公开 API 很容易撞上 429，GLM 的原文是：

@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 ## 量化每个动画"到底动没动"，用来排查"播放某些 extra 时看着像静止"的问题。
 ## 指标（都用全部网格节点的世界坐标）：

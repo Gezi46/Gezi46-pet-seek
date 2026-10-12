@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 extends SceneTree
 # 只播指定动画并截图，用来确认落地/朝向是否正确。
 # 用法: godot --path <项目> --script res://tools/shoot_pose.gd -- idle 60

@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## token 账：从服务商给的 usage 里取"命中多少 / 未命中多少"，并拼那一行日志。
 ##
 ## 从 pet_chat.gd 搬出来（作业单 B1.4）。全是 **static** —— 只认一个 Dictionary，

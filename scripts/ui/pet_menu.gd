@@ -39,9 +39,8 @@ const ID_PET := 0
 const ID_FEED := 1
 const ID_SLEEP := 2
 const ID_JUMP := 3
-const ID_SCALE_75 := 4
-const ID_SCALE_100 := 5
-const ID_SCALE_135 := 6
+## 4~6 退役：原来是小 / 中 / 大（缩放三个条目）。设置面板「窗口与操作 → 大小」是同一个值，
+## 也是同一套三选一 —— 一码事不留两套 UI
 const ID_TOGGLE_TOP := 7
 const ID_TALK_LOCAL := 8
 const ID_HOME_HERE := 9
@@ -51,27 +50,20 @@ const ID_CHAT := 12
 const ID_ASK := 13
 const ID_PEEK_NOW := 14
 const ID_CAMERA_NOW := 15
-const ID_PROACTIVE := 16
-const ID_PEEK := 17
-const ID_CAMERA := 18
+## 16 退役：原来是「主动说话」的快捷勾。设置面板「说话 → 主动说话」是同一个开关，
+## 2026-10-05 一起归位了 —— 她太吵就去面板里关，那儿顺带还能调频率
+## 17 / 18 退役：原来叫「定时偷看屏幕」「定时看摄像头」——
+## 和设置面板里的「说话 → 定时偷看屏幕 / 定时看摄像头」是同一个开关，一码事不留两套 UI。
+## 「现在就看一眼」那两项（ID_PEEK_NOW / ID_CAMERA_NOW）留着，那是动作不是选项
 ## 打开 AI 服务设置（后端地址 / 密钥 / 模型）
 const ID_AI_SETTINGS := 19
 ## 立刻重新探一次 AI 服务（改完地址、或服务刚起来时用）
 const ID_AI_RECONNECT := 20
-## 开机自启动（Windows 注册表 Run 项，见 scripts/pet_shell.gd）
-const ID_AUTOSTART := 21
-## 隐藏任务栏图标（不进任务栏 / Alt+Tab）
-const ID_HIDE_TASKBAR := 22
-## 全屏时保持安静（检测到全屏就只在小范围里挪动）
-const ID_QUIET_FULLSCREEN := 23
-## 托盘图标（任务栏右下角"隐藏的图标"里那一个）
-const ID_TRAY := 24
-## 主动说话的频率。四档单选，对应 pet_proactive.gd 里 rate 的下标
-## （宿主从 `_proactive.rate` 取当前档）
-const ID_TALK_SELDOM := 25
-const ID_TALK_NORMAL := 26
-const ID_TALK_OFTEN := 27
-const ID_TALK_VERY_OFTEN := 28
+## 21~24 退役：开机自启动 / 隐藏任务栏图标 / 全屏时保持安静 / 托盘图标 ——
+## 这四个在设置面板「开机与系统」里有**一模一样的四个勾**（连说明都是同一份）。
+## 删掉之后那个子菜单整个没了，只把「自启动：…」那一行状态挪到了根菜单
+## 25~28 退役：原来叫「主动说话的频率」四档。设置面板的「说话 → 主动说话的频率」
+## 是**一模一样**的四档（连文案都一样），留着只是让人多一个地方改
 ## 打开设置面板（人设 / 记忆 / 说话 / 窗口 / 系统，见 scripts/pet_settings.gd）
 const ID_SETTINGS := 29
 ## 让她用本机 dsh（DeepSeek Harness）干活：开关 / 派活（见 scripts/pet_harness.gd）
@@ -79,8 +71,8 @@ const ID_HARNESS := 30
 const ID_HARNESS_TASK := 31
 ## 打开工作台（派活 / 看原文 / 重启她，见 scripts/pet_workbench.gd）
 const ID_WORKBENCH := 32
-## 「只在小范围走动」——「位置与窗口」里的勾选项，和设置面板同一个键
-const ID_STAY_NEARBY := 33
+## 33 退役：原来叫「只在小范围走动」。设置面板里是同一个键，而且**半径只能在那边调** ——
+## 菜单那个勾等于把一半的功能放在另一个地方，不如都归面板
 ## 主动说话时先瞥一眼屏幕（2026-09-27 用户要求：绑定 + 概率性 + 默认开）
 const ID_PROACTIVE_PEEK := 34
 ## 哄哄她：她"连着被冷落 4 次、生气不主动说话"时用它回来（2026-09-27 用户要求）
@@ -90,16 +82,9 @@ const ID_PEAK_REDUCE := 36
 ## 37 是**退役**的号：它原来叫「透明模式（点不到我）」，2026-10-05 整块删掉了。
 ## 留着这个空号是为了**以后别再复用** —— 翻旧提交看到 id 37 时，一眼就知道那是个
 ## 已经不存在的东西，而不是"某个我还没找到的功能"
-## 回复按钮的出现频率。四档单选，对应 quick_chance 的值（见 desktop_pet._set_quick_chance）
-const ID_QUICK_NEVER := 38
-const ID_QUICK_RARE := 39
-const ID_QUICK_HALF := 40
-const ID_QUICK_OFTEN := 41
-## 移动频率。四档单选，对应 move_chance 的值（见 desktop_pet._set_move_chance）
-const ID_MOVE_NEVER := 42
-const ID_MOVE_RARE := 43
-const ID_MOVE_SOME := 44
-const ID_MOVE_OFTEN := 45
+## 38~45 退役：原来叫「回复按钮出现频率」和「移动频率」，各四档。
+## 设置面板里这两个是**连续滑杆**（quick_chance / move_chance），比四档细 ——
+## 那两套 UI 表达的是同一件事，删掉粗的那套
 ## 「给她起个名字…」—— 根菜单一级，点开就是一个小输入框（2026-10-04 用户要求：
 ## "改成可以在菜单随意命名"）。名字本来就在设置面板里有，但要翻两层再滚到那一项，
 ## 改名这种"顺手就干"的事不该这么绕
@@ -107,6 +92,9 @@ const ID_RENAME := 46
 ## 「导出日志…」：把运行日志 + 系统信息收成一份丢到桌面（见 scripts/sys/pet_log.gd）。
 ## 放一级菜单是**故意的**：她出问题时，用户正着急，不该再翻两层子菜单去找
 const ID_EXPORT_LOG := 47
+## 「我们的日记…」：翻她记下的日子（见 scripts/body/pet_diary.gd）。
+## 放一级菜单：它是**给你看的**东西，不是设置 —— 混进设置面板就没人找得到了
+const ID_DIARY := 48
 ## 自启动状态那一行：只用来显示，点了什么也不做。
 ## 给个大编号躲开真实动作的号段 —— 万一哪天漏了拦截，也不会误触发别的功能
 const ID_AUTOSTART_STATUS := 900
@@ -114,7 +102,8 @@ const ID_AUTOSTART_STATUS := 900
 const ID_AI_STATUS := 901
 
 ## 服务来源预设：选一下就把地址和两个模型填好，省得手抄。
-## 两个都是 OpenAI 兼容协议，桌宠只换地址/密钥/模型名。
+## 三个都是 OpenAI 兼容协议，桌宠只换地址/密钥/模型名。
+## 带键 "key" 的预设会在选中时把密钥栏一并清掉（本地后端不要鉴权）
 const PROVIDERS: Array = [
 	{
 		"name": "官方 API（付费 key）",
@@ -127,6 +116,13 @@ const PROVIDERS: Array = [
 		"url": "http://127.0.0.1:8520/v1",
 		"model": "deepseek-chat",
 		"vision": "",
+	},
+	{
+		"name": "本地小模型（llama.cpp · Qwen3.5）",
+		"url": "http://127.0.0.1:8530/v1",
+		"model": "qwen3.5-4b",
+		"vision": "qwen3.5-4b",
+		"key": "",
 	},
 ]
 
@@ -191,20 +187,8 @@ func _build_menu() -> void:
 	var where := _submenu("位置与窗口")
 	_item(where, "记住当前位置", ID_HOME_HERE)
 	_item(where, "回到右下角", ID_HOME_DEFAULT)
-	_toggle(where, "只在小范围走动", ID_STAY_NEARBY,
-		"开着她只在家附近那一小块里转，不再满屏溜达。范围大小在设置面板里调")
-	var mrate := _submenu_of(where, "移动频率")
-	_radio(mrate, "从不（一直待着）", ID_MOVE_NEVER)
-	_radio(mrate, "很少", ID_MOVE_RARE)
-	_radio(mrate, "偶尔", ID_MOVE_SOME)
-	_radio(mrate, "经常", ID_MOVE_OFTEN)
-	where.add_submenu_node_item("移动频率", mrate)
 	where.add_separator()
 	_item(where, "窗口置顶", ID_TOGGLE_TOP)
-	where.add_separator()
-	_item(where, "小 (75%)", ID_SCALE_75)
-	_item(where, "中 (100%)", ID_SCALE_100)
-	_item(where, "大 (135%)", ID_SCALE_135)
 	_menu.add_submenu_node_item("位置与窗口", where)
 
 	var ai := _submenu("聊天与 AI")
@@ -214,25 +198,10 @@ func _build_menu() -> void:
 	_item(ai, "偷看屏幕看看", ID_PEEK_NOW)
 	_item(ai, "看一眼摄像头", ID_CAMERA_NOW)
 	ai.add_separator()
-	_toggle(ai, "主动说话", ID_PROACTIVE, "闲下来会自己找话题")
-	var rate := _submenu_of(ai, "主动说话的频率")
-	_radio(rate, "很少（十几分钟一次）", ID_TALK_SELDOM)
-	_radio(rate, "普通（5~15 分钟）", ID_TALK_NORMAL)
-	_radio(rate, "频繁（2~5 分钟）", ID_TALK_OFTEN)
-	_radio(rate, "很频繁（半分钟左右）", ID_TALK_VERY_OFTEN)
-	ai.add_submenu_node_item("主动说话的频率", rate)
-	var quickc := _submenu_of(ai, "回复按钮出现频率")
-	_radio(quickc, "从不", ID_QUICK_NEVER)
-	_radio(quickc, "偶尔（约 1/4）", ID_QUICK_RARE)
-	_radio(quickc, "一半（约 1/2）", ID_QUICK_HALF)
-	_radio(quickc, "经常（约 3/4）", ID_QUICK_OFTEN)
-	ai.add_submenu_node_item("回复按钮出现频率", quickc)
 	_toggle(ai, "高峰时段少说话", ID_PEAK_REDUCE,
 		"DeepSeek 官方高峰（工作日 9~12 点、14~18 点）把主动开口间隔拉长 5 倍 —— 少撞限流")
-	_toggle(ai, "定时偷看屏幕", ID_PEEK, "按间隔看一眼屏幕并说一句")
 	_toggle(ai, "主动说话时先看一眼屏幕", ID_PROACTIVE_PEEK,
 		"按概率先抓一张屏幕，她就着画面（和前台窗口）找话题 —— 默认开")
-	_toggle(ai, "定时看摄像头", ID_CAMERA, "接入摄像头那条链路")
 	ai.add_separator()
 	# 本机 dsh（DeepSeek Harness）：让她把简单活派出去干
 	_toggle(ai, "让她用 dsh 干活", ID_HARNESS,
@@ -245,20 +214,15 @@ func _build_menu() -> void:
 	_item(ai, "重新连接 AI 服务", ID_AI_RECONNECT)
 	_menu.add_submenu_node_item("聊天与 AI", ai)
 
-	var sys := _submenu("开机与系统")
-	_toggle(sys, "开机自启动", ID_AUTOSTART, "登录 Windows 后自动启动 PetDeek（写用户级注册表，随时可关）")
-	_toggle(sys, "隐藏任务栏图标", ID_HIDE_TASKBAR, "不在任务栏和 Alt+Tab 里出现，桌面上照常显示")
-	_toggle(sys, "全屏时保持安静", ID_QUIET_FULLSCREEN,
-		"检测到全屏（看视频/玩游戏）就只在家的附近小范围挪动；关掉则不再留后台检测进程")
-	_toggle(sys, "托盘图标", ID_TRAY, "任务栏右下角「隐藏的图标」里放一个，右键能显示/隐藏她或退出")
-	sys.add_separator()
-	_status_row(sys, ID_AUTOSTART_STATUS, "自启动：…")
-	_menu.add_submenu_node_item("开机与系统", sys)
-
 	_menu.add_separator()
+	# 「开机与系统」那个子菜单整个没了（四个开关都归设置面板，见 id 区 21~24 那条说明）。
+	# 只把这一行**状态**留下来放一级：它是去注册表读出来的真实情况，
+	# 和"我们记着的开关"不一定一致（可能被启动项管理工具关掉）—— 值得一眼看到
+	_status_row(_menu, ID_AUTOSTART_STATUS, "自启动：…")
 	# 工作台放一级：它是"给她派活、看她改了什么"的地方，主要用来让她给自己升级
 	_item(_menu, "工作台…", ID_WORKBENCH, "把活交给本机的 dsh 干：任务、工作目录、结果原文、" \
 		+ "干完一键重启她")
+	_item(_menu, "我们的日记…", ID_DIARY, "翻她记下的日子：认识多少天、连着多少天、每天发生了什么")
 	_item(_menu, "给她起个名字…", ID_RENAME, "改完立刻生效（写进人设提示词）；留空就回到默认的「小蓝」")
 	_item(_menu, "设置…", ID_SETTINGS)
 	_menu.add_separator()
@@ -334,33 +298,6 @@ func _toggle(m: PopupMenu, label: String, id: int, tip: String = "") -> void:
 		m.set_item_as_checkable(idx, true)
 	_check_owner[id] = m
 
-## 单选条目。PopupMenu 没有"单选组"这种东西，所以勾选状态得自己保证
-## 同时只有一个（见 sync_talk_rate），这里只负责把它做成可勾的
-func _radio(m: PopupMenu, label: String, id: int) -> void:
-	_toggle(m, label, id)
-
-## 主动说话的频率是四选一。PopupMenu 没有单选组，所以这里手动把
-## 其余三个取消掉 —— 不然会出现"两个档同时打着勾"
-func sync_talk_rate(idx: int) -> void:
-	_set_checked(ID_TALK_SELDOM, idx == 0)
-	_set_checked(ID_TALK_NORMAL, idx == 1)
-	_set_checked(ID_TALK_OFTEN, idx == 2)
-	_set_checked(ID_TALK_VERY_OFTEN, idx == 3)
-
-## 回复按钮出现频率也是四选一（照 sync_talk_rate 的模式）
-func sync_quick_chance(idx: int) -> void:
-	_set_checked(ID_QUICK_NEVER, idx == 0)
-	_set_checked(ID_QUICK_RARE, idx == 1)
-	_set_checked(ID_QUICK_HALF, idx == 2)
-	_set_checked(ID_QUICK_OFTEN, idx == 3)
-
-## 移动频率也是四选一（照 sync_talk_rate 的模式）
-func sync_move_chance(idx: int) -> void:
-	_set_checked(ID_MOVE_NEVER, idx == 0)
-	_set_checked(ID_MOVE_RARE, idx == 1)
-	_set_checked(ID_MOVE_SOME, idx == 2)
-	_set_checked(ID_MOVE_OFTEN, idx == 3)
-
 ## "让她用 dsh 干活"那个勾
 func sync_harness(on: bool) -> void:
 	_set_checked(ID_HARNESS, on)
@@ -410,26 +347,16 @@ func _apply_menu_font(m: PopupMenu) -> void:
 ## PopupMenu 的勾选状态是它自己存的，和我们的运行时开关是两套东西，
 ## 所以每次改完都要同步一次 —— 否则菜单里显示的和实际生效的会对不上
 ## （尤其是从配置文件读出来之后）。
-func sync_toggles(proactive: bool, peek: bool, camera: bool, proactive_peek: bool) -> void:
-	_set_checked(ID_PROACTIVE, proactive)
-	_set_checked(ID_PEEK, peek)
-	_set_checked(ID_CAMERA, camera)
-	_set_checked(ID_PROACTIVE_PEEK, proactive_peek)
+##
+## 2026-10-05 之后菜单里只剩**三个勾**（高峰时段 / 主动说话时先看一眼屏幕 / 让她用 dsh），
+## 原来那个"一次同步四个参数"的 sync_toggles 就拆成了各自一个
+func sync_proactive_peek(on: bool) -> void:
+	_set_checked(ID_PROACTIVE_PEEK, on)
 
 ## 「高峰时段少说话」的勾选同步（和主动说话那几个并列）
 func sync_peak_reduce(on: bool) -> void:
 	_set_checked(ID_PEAK_REDUCE, on)
 
-## 「只在小范围走动」的勾选同步（它不属于上面任何一组，单独一个）
-func sync_stay_nearby(on: bool) -> void:
-	_set_checked(ID_STAY_NEARBY, on)
-
-## "开机与系统"那几个开关的勾选同步
-func sync_system(autostart: bool, hide_taskbar: bool, quiet: bool, tray: bool) -> void:
-	_set_checked(ID_AUTOSTART, autostart)
-	_set_checked(ID_HIDE_TASKBAR, hide_taskbar)
-	_set_checked(ID_QUIET_FULLSCREEN, quiet)
-	_set_checked(ID_TRAY, tray)
 
 ## 更新自启动状态那一行。内容由 pet_shell.gd 给（它知道注册表的真实情况）
 func set_autostart_status(text: String) -> void:
@@ -639,6 +566,9 @@ func _on_provider_picked(idx: int) -> void:
 	_url_edit.text = String(p["url"])
 	_model_edit.text = String(p["model"])
 	_vision_edit.text = String(p["vision"])
+	# 本地那档顺手清掉密钥栏（服务不要鉴权，留着旧 key 只会误导人）
+	if p.has("key"):
+		_key_edit.text = String(p["key"])
 
 ## 面板打开时填当前值。status 用来把"连不上/令牌过期"这类原因直接写给人看
 func open_ai_panel(status: String = "") -> void:

@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Gezi46
-#
 ## 密钥**不写明文**：存到一个用引擎官方接口加密的文件里。
 ##
 ## 为什么不是"往 pet_chat.cfg 里写一段密文"：那样得自己挑算法、自己管 IV 和分组填充 ——
